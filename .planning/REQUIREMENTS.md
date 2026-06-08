@@ -10,7 +10,7 @@ Requirements for the initial packaged release. Each maps to a roadmap phase.
 ### Packaging & Distribution
 
 - [x] **PKG-01**: Project is a pip-installable package (src layout, `pyproject.toml`, importable as `forexfactory`)
-- [ ] **PKG-02**: A unified CLI entry point exposes populate, refresh, and query commands
+- [x] **PKG-02**: A unified CLI entry point exposes populate, refresh, and query commands
 - [x] **PKG-03**: A programmatic library API exposes a main call that returns a path to a parquet file
 - [x] **PKG-04**: Existing scrape/pipeline logic is reused (not rewritten) and the ~195 cached months are re-processed into the new schema without re-scraping
 
@@ -75,7 +75,7 @@ Populated during roadmap creation — each requirement maps to exactly one phase
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | PKG-01 | Phase 1 | Complete |
-| PKG-02 | Phase 1 | Pending |
+| PKG-02 | Phase 1 | Complete |
 | PKG-03 | Phase 1 | Complete |
 | PKG-04 | Phase 1 | Complete |
 | CACHE-01 | Phase 1 | Complete |
