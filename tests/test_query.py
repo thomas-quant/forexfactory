@@ -221,8 +221,118 @@ class QueryHappyPathTests(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Task 2 — D-09: out-of-scope error tests  (added in Task 2 RED)
+# Task 2 — D-09: out-of-scope error tests
 # ---------------------------------------------------------------------------
+
+class QueryScopeErrorTests(unittest.TestCase):
+    """Task 2 — D-09: out-of-scope request raises ValueError with populate guidance."""
+
+    def _setup_usd_high_only(self, cache_dir: Path) -> None:
+        """Write a manifest with scope limited to USD/high + holiday."""
+        from forexfactory import _cache
+
+        _cache.ensure_dirs(cache_dir)
+        _cache.write_manifest(cache_dir, {
+            "scope": {"currencies": ["USD"], "impacts": ["high", "holiday"]},
+            "months": {
+                "2026-03": {"scraped_at": "2026-06-08T00:00:00Z", "settled": True},
+            },
+        })
+
+    def test_out_of_scope_raises_value_error(self):
+        """Requesting EUR/medium when scope is USD/high raises ValueError (D-09)."""
+        from forexfactory import _query
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            self._setup_usd_high_only(cache_dir)
+
+            with self.assertRaises(ValueError):
+                _query.run_query(
+                    currencies=["EUR"],
+                    impacts=["medium"],
+                    cache_dir=cache_dir,
+                )
+
+    def test_out_of_scope_error_message_contains_populate_command(self):
+        """ValueError message contains 'forexfactory populate' with remediation guidance (D-09)."""
+        from forexfactory import _query
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            self._setup_usd_high_only(cache_dir)
+
+            try:
+                _query.run_query(
+                    currencies=["EUR"],
+                    impacts=["medium"],
+                    cache_dir=cache_dir,
+                )
+                self.fail("Expected ValueError not raised")
+            except ValueError as exc:
+                self.assertIn(
+                    "forexfactory populate",
+                    str(exc),
+                    "error message must contain 'forexfactory populate' remediation",
+                )
+
+    def test_out_of_scope_does_not_write_result_file(self):
+        """No result parquet is written when the request is out of scope (D-09)."""
+        from forexfactory import _query, _cache
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            self._setup_usd_high_only(cache_dir)
+
+            try:
+                _query.run_query(
+                    currencies=["EUR"],
+                    impacts=["medium"],
+                    cache_dir=cache_dir,
+                )
+            except ValueError:
+                pass
+
+            q_dir = _cache.queries_dir(cache_dir)
+            written = list(q_dir.glob("*.parquet")) if q_dir.exists() else []
+            self.assertEqual(len(written), 0, "no parquet should be written on scope error")
+
+    def test_empty_manifest_raises_value_error(self):
+        """Empty manifest (nothing populated) raises ValueError for any request (D-09)."""
+        from forexfactory import _query, _cache
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            _cache.ensure_dirs(cache_dir)
+            # No manifest written — empty cache
+
+            with self.assertRaises(ValueError):
+                _query.run_query(
+                    currencies=["USD"],
+                    impacts=["high"],
+                    cache_dir=cache_dir,
+                )
+
+    def test_error_message_names_missing_currency(self):
+        """Error message includes the uncovered currency identifier (D-09)."""
+        from forexfactory import _query
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            self._setup_usd_high_only(cache_dir)
+
+            try:
+                _query.run_query(
+                    currencies=["EUR"],
+                    impacts=["medium"],
+                    cache_dir=cache_dir,
+                )
+                self.fail("Expected ValueError not raised")
+            except ValueError as exc:
+                msg = str(exc)
+                self.assertIn("EUR", msg)
+                self.assertIn("medium", msg)
+
 
 if __name__ == "__main__":
     unittest.main()
