@@ -72,7 +72,17 @@ def build_month_parquet(
         columns=["datetime_utc", "currency", "impact", "title", "id", "leaked"]
     )
     if rows and "date" in df.columns and "time_utc" in df.columns:
-        df["datetime_utc"] = pd.to_datetime(df["date"] + " " + df["time_utc"], utc=True)
+        # WR-02: use errors="coerce" so holiday-class events with null/empty
+        # datelines become NaT instead of raising a ParserError mid-run.
+        df["datetime_utc"] = pd.to_datetime(
+            df["date"] + " " + df["time_utc"], utc=True, errors="coerce"
+        )
+        null_count = int(df["datetime_utc"].isna().sum())
+        if null_count:
+            logger.warning(
+                "[populate] %d row(s) have no parseable dateline — stored as NaT",
+                null_count,
+            )
         df = df.drop(columns=["date", "time_utc"])
         df = df[["datetime_utc"] + [c for c in df.columns if c != "datetime_utc"]]
 

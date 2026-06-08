@@ -184,7 +184,14 @@ def csv_to_parquet(csv_path: str, parquet_path: str = None) -> str:
 
     # Combine date + time into a single datetime column (UTC)
     if "date" in df.columns and "time_utc" in df.columns:
-        df["datetime_utc"] = pd.to_datetime(df["date"] + " " + df["time_utc"], utc=True)
+        # WR-02: errors="coerce" so rows with empty/null datelines become NaT
+        # instead of raising a ParserError and aborting the run.
+        df["datetime_utc"] = pd.to_datetime(
+            df["date"] + " " + df["time_utc"], utc=True, errors="coerce"
+        )
+        null_count = int(df["datetime_utc"].isna().sum())
+        if null_count:
+            print(f"[warn] {null_count} row(s) have no parseable dateline — stored as NaT")
         df = df.drop(columns=["date", "time_utc"])
         df = df[["datetime_utc"] + [c for c in df.columns if c != "datetime_utc"]]
 
@@ -234,7 +241,14 @@ def run_pipeline(
     # Convert to DataFrame and output parquet
     df = pd.DataFrame(rows)
     if "date" in df.columns and "time_utc" in df.columns:
-        df["datetime_utc"] = pd.to_datetime(df["date"] + " " + df["time_utc"], utc=True)
+        # WR-02: errors="coerce" so rows with empty/null datelines become NaT
+        # instead of raising a ParserError and aborting the run.
+        df["datetime_utc"] = pd.to_datetime(
+            df["date"] + " " + df["time_utc"], utc=True, errors="coerce"
+        )
+        null_count = int(df["datetime_utc"].isna().sum())
+        if null_count:
+            print(f"[warn] {null_count} row(s) have no parseable dateline — stored as NaT")
         df = df.drop(columns=["date", "time_utc"])
         df = df[["datetime_utc"] + [c for c in df.columns if c != "datetime_utc"]]
 
