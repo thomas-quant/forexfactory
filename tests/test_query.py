@@ -47,6 +47,45 @@ def _eur_medium_row(dt: str = "2026-03-01 09:00:00") -> dict:
     }
 
 
+def _usd_high_data_row(dt: str = "2026-03-01 08:30:00") -> dict:
+    """USD/high data-bearing row with hasDataValues=True (Phase-2 schema)."""
+    return {
+        "datetime_utc": pd.Timestamp(dt, tz="UTC"),
+        "currency": "USD",
+        "impact": "high",
+        "title": "CPI y/y",
+        "id": "cpi-1",
+        "leaked": False,
+        "hasDataValues": True,
+    }
+
+
+def _speech_row(dt: str = "2026-03-01 09:00:00") -> dict:
+    """USD/high speech row with hasDataValues=False (no data release)."""
+    return {
+        "datetime_utc": pd.Timestamp(dt, tz="UTC"),
+        "currency": "USD",
+        "impact": "high",
+        "title": "Fed Chair Powell Speaks",
+        "id": "powell-1",
+        "leaked": False,
+        "hasDataValues": False,
+    }
+
+
+def _holiday_row(dt: str = "2026-03-01 00:00:00") -> dict:
+    """USD/holiday row with hasDataValues=False (bank holiday — always visible by default, D-08)."""
+    return {
+        "datetime_utc": pd.Timestamp(dt, tz="UTC"),
+        "currency": "USD",
+        "impact": "holiday",
+        "title": "Presidents Day",
+        "id": "holiday-1",
+        "leaked": False,
+        "hasDataValues": False,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Task 1 — D-07 / D-08 / SC4: happy path tests
 # ---------------------------------------------------------------------------
@@ -332,6 +371,152 @@ class QueryScopeErrorTests(unittest.TestCase):
                 msg = str(exc)
                 self.assertIn("EUR", msg)
                 self.assertIn("medium", msg)
+
+
+# ---------------------------------------------------------------------------
+# Phase-2 D-08/D-09: include_no_data filter tests
+# ---------------------------------------------------------------------------
+
+class QueryIncludeNoDataTests(unittest.TestCase):
+    """D-08/D-09: include_no_data filter — speeches hidden by default, holidays visible."""
+
+    def _setup_cache(
+        self,
+        cache_dir: Path,
+        months: list,
+        rows_per_month: list,
+        scope: dict | None = None,
+    ) -> None:
+        """Write per-month parquets + manifest under cache_dir."""
+        from forexfactory import _cache
+
+        _cache.ensure_dirs(cache_dir)
+        if scope is None:
+            scope = {"currencies": ["USD"], "impacts": ["high", "holiday"]}
+        manifest = {"scope": scope, "months": {}}
+        for (year, month), rows in zip(months, rows_per_month):
+            anchor = __import__("datetime").date(year, month, 1)
+            p = _cache.month_parquet_path(cache_dir, anchor)
+            _make_parquet(p, rows)
+            manifest["months"][f"{year:04d}-{month:02d}"] = {
+                "scraped_at": "2026-06-08T00:00:00Z",
+                "settled": True,
+            }
+        _cache.write_manifest(cache_dir, manifest)
+
+    def test_default_hides_speeches(self):
+        """Default run_query hides hasDataValues=False non-holiday rows (D-08)."""
+        from forexfactory import _query
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            data_row = _usd_high_data_row("2026-03-01 08:30:00")
+            speech = _speech_row("2026-03-01 09:00:00")
+            self._setup_cache(cache_dir, [(2026, 3)], [[data_row, speech]])
+
+            result = _query.run_query(
+                currencies=["USD"],
+                impacts=["high", "holiday"],
+                cache_dir=cache_dir,
+            )
+
+            df = pd.read_parquet(result)
+            self.assertEqual(len(df), 1, "default result should contain only the data-bearing row")
+            self.assertEqual(df.iloc[0]["title"], "CPI y/y")
+            self.assertFalse(
+                any(df["title"] == "Fed Chair Powell Speaks"),
+                "speech row must not appear in default result",
+            )
+
+    def test_include_no_data_surfaces_speeches(self):
+        """include_no_data=True returns data-bearing rows AND speech rows (D-09)."""
+        from forexfactory import _query
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            data_row = _usd_high_data_row("2026-03-01 08:30:00")
+            speech = _speech_row("2026-03-01 09:00:00")
+            self._setup_cache(cache_dir, [(2026, 3)], [[data_row, speech]])
+
+            result = _query.run_query(
+                currencies=["USD"],
+                impacts=["high", "holiday"],
+                cache_dir=cache_dir,
+                include_no_data=True,
+            )
+
+            df = pd.read_parquet(result)
+            self.assertEqual(len(df), 2, "include_no_data=True must include both rows")
+            titles = set(df["title"].tolist())
+            self.assertIn("CPI y/y", titles)
+            self.assertIn("Fed Chair Powell Speaks", titles)
+
+    def test_holiday_visible_by_default(self):
+        """Holidays (impact='holiday', hasDataValues=False) appear in default result (D-08)."""
+        from forexfactory import _query
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            holiday = _holiday_row("2026-03-01 00:00:00")
+            speech = _speech_row("2026-03-01 09:00:00")
+            self._setup_cache(cache_dir, [(2026, 3)], [[holiday, speech]])
+
+            result = _query.run_query(
+                currencies=["USD"],
+                impacts=["high", "holiday"],
+                cache_dir=cache_dir,
+            )
+
+            df = pd.read_parquet(result)
+            self.assertGreater(len(df), 0, "holiday must not be hidden by default filter")
+            self.assertTrue(
+                any(df["impact"] == "holiday"),
+                "holiday row must appear in default result (D-08)",
+            )
+            self.assertFalse(
+                any(df["title"] == "Fed Chair Powell Speaks"),
+                "speech must still be hidden even when holiday is visible",
+            )
+
+    def test_stale_cache_without_hasdatavalues_does_not_raise(self):
+        """Querying a pre-Phase-2 parquet lacking hasDataValues column does not raise (RESEARCH Pitfall 4)."""
+        from forexfactory import _query
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            # Rows without hasDataValues key (pre-Phase-2 parquet)
+            stale_row = _usd_high_row("2026-03-01 08:30:00")
+            self._setup_cache(cache_dir, [(2026, 3)], [[stale_row]])
+
+            # Must not raise — should degrade gracefully and return a result Path
+            result = _query.run_query(
+                currencies=["USD"],
+                impacts=["high"],
+                cache_dir=cache_dir,
+            )
+
+            self.assertIsInstance(result, Path)
+            self.assertTrue(result.exists(), "result parquet must exist even for stale cache")
+
+    def test_forexfactory_get_include_no_data_kwarg_forwarded(self):
+        """forexfactory.get(include_no_data=True) kwarg is forwarded to run_query (D-12)."""
+        import forexfactory
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            data_row = _usd_high_data_row("2026-03-01 08:30:00")
+            speech = _speech_row("2026-03-01 09:00:00")
+            self._setup_cache(cache_dir, [(2026, 3)], [[data_row, speech]])
+
+            result = forexfactory.get(
+                currencies=["USD"],
+                impacts=["high", "holiday"],
+                cache_dir=cache_dir,
+                include_no_data=True,
+            )
+
+            df = pd.read_parquet(result)
+            self.assertEqual(len(df), 2, "get(include_no_data=True) must surface speech rows")
 
 
 if __name__ == "__main__":
