@@ -11,6 +11,7 @@ Usage:
 """
 
 import os
+import re
 import json
 import glob
 import csv
@@ -28,7 +29,26 @@ KEEP_CURRENCIES = {"USD"}                   # only USD
 KEEP_IMPACTS = {"high", "holiday"}          # red folder + bank holidays
 PARQUET_COMPRESSION = "zstd"
 PARQUET_COMPRESSION_LEVEL = 3
+# Phase-2 full analytical schema — final parquet column order (D-01, DATA-02/03/04).
+# Imported by _populate.py and _query.py to prevent stale-column-list drift (RESEARCH Pitfall 3).
+PHASE2_COLUMNS: list[str] = [
+    "datetime_utc", "currency", "impact", "title", "id", "leaked",
+    "forecast_raw", "actual_raw", "previous_raw", "revision_raw",
+    "forecast", "actual", "previous", "revision",
+    "actualBetterWorse", "revisionBetterWorse",
+    "ebaseId", "country", "hasDataValues",
+]
 # ==========================
+
+# Numeric parsing helpers for _parse_value() (D-02).
+# Regex matches an optional sign, digits, optional decimal, and an optional
+# magnitude suffix or percent. Pipe-separated bond auction values ('1.34|2.6'),
+# angle-bracket sub-threshold values ('<0.10%'), and any other format that
+# contains characters outside this set produce no match -> NaN.
+_NUMERIC_RE = re.compile(r'^([+-]?\d*\.?\d+)([KMBTkmbt%]?)$')
+_SUFFIX_MAP: dict[str, float] = {
+    'K': 1e3, 'M': 1e6, 'B': 1e9, 'T': 1e12, '%': 1e-2,
+}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -78,23 +98,78 @@ def to_iso(dt_epoch: int | float | None):
         return "", ""
 
 
+def _parse_value(s: str) -> float:
+    """Parse a FF value string to float, returning float('nan') for unparseable input.
+
+    Magnitude suffixes: K=1e3, M=1e6, B=1e9, T=1e12. Percent divides by 100 so
+    ratio-ready columns need no re-dividing downstream (D-02). Pipe-separated bond
+    auction values ('1.34|2.6'), angle-bracket sub-threshold values ('<0.10%'),
+    non-numeric strings ('Pass', 'Yes'), and empty strings all become NaN.
+    Suffix matching is case-insensitive (the regex captures [KMBTkmbt%]).
+    NEVER raises; any unparseable or hostile input -> float('nan') (T-02-01).
+    """
+    if not s or not s.strip():
+        return float('nan')
+    s = s.strip()
+    m = _NUMERIC_RE.match(s)
+    if not m:
+        return float('nan')
+    num = float(m.group(1))
+    suffix = m.group(2).upper()
+    if suffix:
+        num *= _SUFFIX_MAP[suffix]
+    return num
+
+
 def flatten_events(days, src_path=None):
-    """Flatten nested days/events structure into individual event dicts."""
+    """Flatten nested days/events structure into individual event dicts.
+
+    Phase 2: yields 20 source keys — the 19 PHASE2_COLUMNS fields (with date +
+    time_utc standing in for the derived datetime_utc) plus the analytical schema:
+    raw value strings, parsed numerics, surprise flags, identity, and hasDataValues.
+    FF UI/internal fields (checker, releaser, siteId, show*/enable*, soloTitle,
+    notice, etc.) are silently dropped (DATA-04).
+    """
     for d in days:
         for ev in d.get("events", []):
             currency = (ev.get("currency") or "").upper()
             impact = norm_impact(ev.get("impactName") or ev.get("impactTitle") or "")
-            title = ev.get("prefixedName") or ev.get("name") or ev.get("soloTitle") or ""
+            # soloTitle is in the DATA-04 drop list — do NOT add it as a fallback.
+            title = ev.get("prefixedName") or ev.get("name") or ""
             dateline = ev.get("dateline")
             date_iso, time_utc = to_iso(dateline)
+
+            # Raw value strings (verbatim from FF — D-01)
+            forecast_raw = ev.get("forecast") or ""
+            actual_raw = ev.get("actual") or ""
+            previous_raw = ev.get("previous") or ""
+            revision_raw = ev.get("revision") or ""
+
             yield {
                 "date": date_iso,
                 "time_utc": time_utc,
                 "currency": currency,
                 "impact": impact,
                 "title": title,
-                "id": ev.get("id", ""),
+                # id: None when absent (enables Int64 nullable casting downstream; D-01)
+                "id": ev.get("id"),
                 "leaked": ev.get("leaked"),
+                # Phase-2 analytical schema (D-01, DATA-02/03/04):
+                "forecast_raw": forecast_raw,
+                "actual_raw": actual_raw,
+                "previous_raw": previous_raw,
+                "revision_raw": revision_raw,
+                "forecast": _parse_value(forecast_raw),
+                "actual": _parse_value(actual_raw),
+                "previous": _parse_value(previous_raw),
+                "revision": _parse_value(revision_raw),
+                # actualBetterWorse: 0 can mean "no comparison performed" (speeches/holidays)
+                # or "inline with forecast" (data releases) — store raw int per D-03.
+                "actualBetterWorse": ev.get("actualBetterWorse"),
+                "revisionBetterWorse": ev.get("revisionBetterWorse"),
+                "ebaseId": ev.get("ebaseId"),
+                "country": ev.get("country") or "",
+                "hasDataValues": ev.get("hasDataValues", False),
             }
 
 
@@ -134,7 +209,10 @@ def parse_json_to_csv(
     os.makedirs(os.path.dirname(out_csv) or ".", exist_ok=True)
     cols = ["date", "time_utc", "currency", "impact", "title", "id", "leaked"]
     with open(out_csv, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=cols)
+        # extrasaction="ignore": flatten_events now yields the full 20-field Phase-2 dict;
+        # the legacy 7-column CSV only writes the narrow fieldnames and silently ignores
+        # the new analytical fields — preserves backward compatibility (RESEARCH Pitfall 3).
+        w = csv.DictWriter(f, fieldnames=cols, extrasaction="ignore")
         w.writeheader()
         w.writerows(rows)
 
