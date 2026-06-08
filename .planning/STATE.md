@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-06-08T09:34:50.053Z"
+last_updated: "2026-06-08T09:41:03.306Z"
 last_activity: 2026-06-08
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 7
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-06-08)
 ## Current Position
 
 Phase: 01 (installable-data-provider) — EXECUTING
-Plan: 2 of 7
+Plan: 3 of 7
 Status: Ready to execute
 Last activity: 2026-06-08
 
-Progress: [█░░░░░░░░░] 14%
+Progress: [███░░░░░░░] 29%
 
 ## Performance Metrics
 
@@ -52,6 +52,7 @@ Progress: [█░░░░░░░░░] 14%
 
 *Updated after each plan completion*
 | Phase 01-installable-data-provider P01 | 3min | 3 tasks | 4 files |
+| Phase 01-installable-data-provider P02 | 2min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -63,6 +64,7 @@ Recent decisions affecting current work:
 - Roadmap: 3 coarse phases — packaging+quality first, rich schema+source spike second, cache lifecycle third
 - Roadmap: SRC-01 (API spike) placed in Phase 2 alongside DATA-02..05 so the endpoint investigation informs schema extraction before it is finalized
 - Roadmap: All QUAL-01..04 fixes land in Phase 1 since they are part of restructuring the scripts into a package
+- CACHE-01: resolve_cache_dir() is the single override point (explicit arg > env var FOREXFACTORY_CACHE_DIR > DEFAULT_CACHE_DIR); manifest.json uses atomic os.replace write
 
 ### Pending Todos
 
@@ -82,6 +84,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-06-08T09:34:50.018Z
-Stopped at: Completed 01-01-PLAN.md
+Last session: 2026-06-08T09:41:03.274Z
+Stopped at: Completed 01-02-PLAN.md
 Resume file: None
