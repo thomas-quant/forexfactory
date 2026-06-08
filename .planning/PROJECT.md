@@ -22,37 +22,44 @@ A pip-installable Python package that scrapes the [Forex Factory](https://www.fo
 - ✓ Regression test suite covering scrape, pipeline, and docs — existing
 - ✓ ~195 months of raw data already scraped locally (2010-01 → 2026-03) — existing asset
 
+**Shipped in Phase 1 — Installable Data Provider (2026-06-08):**
+
+- ✓ pip-installable `forexfactory` package (src layout, `pyproject.toml`); `import forexfactory` works — PKG-01
+- ✓ Unified `forexfactory` CLI: `populate` / `query` / `refresh` — PKG-02
+- ✓ Library API `forexfactory.get(currencies=[...], impacts=[...]) -> pathlib.Path` (returns a parquet path) — PKG-03
+- ✓ Existing `scrape.py` / `pipeline.py` reused (relocated under `src/forexfactory/`, not rewritten); ~195 months re-processed with zero HTTP — PKG-04
+- ✓ Shared parquet cache in a configurable user dir (`~/.cache/forexfactory`, env/`--cache-dir` override); per-month parquet + `manifest.json` sidecar — CACHE-01, CACHE-02
+- ✓ Settled (fully-past) months never auto-refetched — CACHE-04
+- ✓ Core schema `datetime_utc, currency, impact, title, id, leaked` — DATA-01
+- ✓ HTML-scrape-and-parse retained as the source, wired into `refresh` — SRC-02
+- ✓ Code-quality debt paid down: shared `_deduplicate_rows()` (QUAL-01), `--in-dir` honored (QUAL-02), no empty-JSON skip-poisoning (QUAL-03), stale date defaults removed (QUAL-04)
+
 ### Active
 
 <!-- This milestone: turn the toolkit into a cached, packaged data provider. Hypotheses until shipped. -->
 
-**Packaging & interfaces**
-- [ ] Distribute as a pip-installable package (src layout, `pyproject.toml`)
-- [ ] Unified CLI entry point (populate / refresh / query)
-- [ ] Programmatic library API whose main call **returns a path to a parquet file**
+**Packaging & interfaces** — ✓ all shipped in Phase 1 (see Validated above)
 
-**Cache**
-- [ ] Shared, parquet-based cache (not raw JSON) in a configurable user cache dir (default `~/.cache/forexfactory` / OS equivalent)
-- [ ] Cache scope (currencies / impacts) chosen when the cache is populated
-- [ ] When a query exceeds the cached scope, auto-fetch the missing data and widen the cache
-- [ ] Settled history is manual-refresh only (no silent re-scraping of the past)
-- [ ] Future-dated months auto-refresh once the whole month has passed, to fill in `actual` values (forecast-only events mature into expected-vs-surprise)
+**Cache** (remaining for later phases)
+- [ ] When a query exceeds the cached scope, auto-fetch the missing data and widen the cache — Phase 3 (Phase 1 errors with guidance instead)
+- [ ] Future-dated months auto-refresh once the whole month has passed, to fill in `actual` values (forecast-only events mature into expected-vs-surprise) — Phase 3
 
-**Data schema**
-- [ ] Core fields: `datetime_utc`, `currency`, `impact`, `title`, `id`, `leaked`
-- [ ] Data values: `forecast`, `actual`, `previous`, `revision`, `hasDataValues` — stored as **raw strings + parsed numeric**
-- [ ] Surprise + identity: `actualBetterWorse`, `revisionBetterWorse`, `ebaseId`, `country`
+**Data schema** (remaining for Phase 2)
+- [x] Core fields: `datetime_utc`, `currency`, `impact`, `title`, `id`, `leaked` — ✓ Phase 1
+- [ ] Data values: `forecast`, `actual`, `previous`, `revision`, `hasDataValues` — stored as **raw strings + parsed numeric** — Phase 2
+- [ ] Surprise + identity: `actualBetterWorse`, `revisionBetterWorse`, `ebaseId`, `country` — Phase 2
 
 **Data source**
-- [ ] Investigate the FF JSON/POST endpoint (`apply-settings`); switch to it if it reliably returns structured data, keeping HTML-scrape-and-parse as a fallback
+- [x] HTML-scrape-and-parse retained as the source (wired into `refresh`) — ✓ Phase 1 (SRC-02)
+- [ ] Investigate the FF JSON/POST endpoint (`apply-settings`); switch to it if it reliably returns structured data, keeping HTML-scrape-and-parse as a fallback — Phase 2 (SRC-01 spike)
 
 **Code quality (full restructure + fix mapped concerns)**
-- [ ] Extract shared deduplication helper (remove copy-paste between `parse_json_to_csv` / `run_pipeline`)
-- [ ] Fix `--in-dir` silent no-op in full-pipeline mode
-- [ ] Stop writing empty JSON on failed scrapes (no permanent skip-poisoning)
-- [ ] Replace stale hardcoded date defaults with sensible/explicit behavior
-- [ ] Add a force-refresh / re-scrape capability
-- [ ] Add fixture-based tests for the fragile `calendarComponentStates` parser
+- [x] Extract shared deduplication helper (remove copy-paste between `parse_json_to_csv` / `run_pipeline`) — ✓ Phase 1
+- [x] Fix `--in-dir` silent no-op in full-pipeline mode — ✓ Phase 1
+- [x] Stop writing empty JSON on failed scrapes (no permanent skip-poisoning) — ✓ Phase 1
+- [x] Replace stale hardcoded date defaults with sensible/explicit behavior — ✓ Phase 1
+- [ ] Add a force-refresh / re-scrape capability — Phase 3
+- [ ] Add fixture-based tests for the fragile `calendarComponentStates` parser — Phase 2
 
 ### Out of Scope
 
@@ -80,14 +87,14 @@ A pip-installable Python package that scrapes the [Forex Factory](https://www.fo
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Distribution model: cached data provider, not a bundled dataset or pure tooling lib | Fetch once, reuse across projects; data isn't shipped in the package | — Pending |
-| Cache stored as parquet, shared user cache dir (configurable) | One machine-wide cache serves all projects; parquet is the read format anyway | — Pending |
-| Cache scope configurable at populate time; auto-widen on out-of-scope query | Avoid caching everything up front, but never block a legitimate request | — Pending |
-| Freshness: manual for settled history; auto-refresh only matured future months | Past is immutable; only future-dated forecasts need to mature into actuals | — Pending |
-| Schema: core + values (raw+parsed) + FF surprise flags + `ebaseId` | Supports expected-vs-surprise and joining a metric's release history | — Pending |
-| Library main call returns a parquet path (not a DataFrame) | Consistent with the parquet cache contract; caller loads as needed | — Pending |
-| Investigate FF JSON/POST endpoint, switch if cleaner, HTML fallback | Reduce reliance on the fragile char-by-char JS parser | — Pending |
-| Full restructure + fix mapped concerns (vs minimal wrap) | Packaging is the moment to pay down the catalogued debt | — Pending |
+| Distribution model: cached data provider, not a bundled dataset or pure tooling lib | Fetch once, reuse across projects; data isn't shipped in the package | ✓ Phase 1 |
+| Cache stored as parquet, shared user cache dir (configurable) | One machine-wide cache serves all projects; parquet is the read format anyway | ✓ Phase 1 (per-month parquet + manifest) |
+| Cache scope configurable at populate time; auto-widen on out-of-scope query | Avoid caching everything up front, but never block a legitimate request | Partial — populate-time scope ✓ Phase 1; auto-widen → Phase 3 (Phase 1 errors with guidance) |
+| Freshness: manual for settled history; auto-refresh only matured future months | Past is immutable; only future-dated forecasts need to mature into actuals | Partial — manual settled ✓ Phase 1; matured auto-refresh → Phase 3 |
+| Schema: core + values (raw+parsed) + FF surprise flags + `ebaseId` | Supports expected-vs-surprise and joining a metric's release history | Partial — core fields ✓ Phase 1; values/surprise/identity → Phase 2 |
+| Library main call returns a parquet path (not a DataFrame) | Consistent with the parquet cache contract; caller loads as needed | ✓ Phase 1 (`forexfactory.get() -> Path`) |
+| Investigate FF JSON/POST endpoint, switch if cleaner, HTML fallback | Reduce reliance on the fragile char-by-char JS parser | Pending — Phase 2 (SRC-01 spike); HTML source shipped Phase 1 |
+| Full restructure + fix mapped concerns (vs minimal wrap) | Packaging is the moment to pay down the catalogued debt | ✓ Phase 1 (QUAL-01..04); QUAL-05 + force-refresh → Phase 2/3 |
 
 ## Evolution
 
@@ -107,4 +114,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-08 after initialization*
+*Last updated: 2026-06-08 — Phase 1 (Installable Data Provider) complete: package, CLI (populate/query/refresh), library `get() -> Path`, parquet cache + manifest, QUAL-01..04 fixes. Next: Phase 2 — full analytical schema + FF API source spike.*
