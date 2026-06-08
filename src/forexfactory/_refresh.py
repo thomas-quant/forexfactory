@@ -38,11 +38,6 @@ DEFAULT_CURRENCIES: list[str] = ["USD"]              # D-04
 DEFAULT_IMPACTS: list[str] = ["high", "holiday"]     # D-04
 # ====================
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
 logger = logging.getLogger(__name__)
 
 

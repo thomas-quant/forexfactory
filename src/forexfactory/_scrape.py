@@ -25,12 +25,6 @@ try:
 except ImportError:  # pragma: no cover - exercised by users without dependency
     curl_requests = None
 
-# ====== LOGGING SETUP ======
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
 logger = logging.getLogger(__name__)
 
 # ====== CONFIG ======
