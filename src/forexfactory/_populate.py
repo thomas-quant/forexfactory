@@ -152,6 +152,12 @@ def run_populate(
 
     # Read manifest once outside the loop (updated after each write)
     manifest = _cache.read_manifest(resolved_cache)
+    # BL-01: snapshot the scope that was in force at the start of this run.
+    # The in-memory `manifest` is mutated by update_manifest_month after each
+    # successful write, so we must NOT read manifest.get("scope") inside the
+    # loop — doing so causes subsequent months to be skipped because the scope
+    # already contains the wider currencies/impacts that were just written.
+    original_scope = manifest.get("scope", {})
     today = date.today()
 
     for i, (anchor, raw_path) in enumerate(anchors, 1):
@@ -179,8 +185,7 @@ def run_populate(
         # D-06 incremental skip-check: skip only if manifest shows this month
         # already cached at a covering scope.
         cached_entry = manifest.get("months", {}).get(month_key)
-        cached_scope = manifest.get("scope", {})
-        if cached_entry and _cache._scope_covers(cached_scope, currencies, impacts):
+        if cached_entry and _cache._scope_covers(original_scope, currencies, impacts):
             logger.info("[%d/%d] Skip (cached at scope): %s", i, total, month_key)
             skipped_count += 1
             continue

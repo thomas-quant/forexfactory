@@ -396,6 +396,81 @@ class PopulateIncrementalTests(unittest.TestCase):
             # Bad JSON treated as empty (no events extractable)
             self.assertEqual(result["populated"], 0)
 
+    def test_wider_scope_rebuilds_all_months_not_just_first(self):
+        """BL-01 regression: wider-scope rebuild must rebuild ALL months, not only the first.
+
+        Before the fix, after successfully rebuilding month-1 the in-memory
+        manifest scope was replaced with the new (wider) scope, causing the
+        skip-check on month-2 to see a fully-covering scope and silently skip
+        it — leaving month-2 parquet with the OLD narrow-scope data.
+        """
+        import pandas as pd
+        from forexfactory import _populate
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            raw_dir = tmp_path / "raw"
+            raw_dir.mkdir()
+            cache_dir = tmp_path / "cache"
+            cache_dir.mkdir()
+
+            # Both months contain USD/high AND EUR/high events.
+            events = [
+                {
+                    "currency": "USD",
+                    "impactName": "High Impact Expected",
+                    "name": "CPI y/y",
+                    "dateline": 1772368200,
+                    "id": "usd-1",
+                    "leaked": False,
+                },
+                {
+                    "currency": "EUR",
+                    "impactName": "High Impact Expected",
+                    "name": "ECB Rate",
+                    "dateline": 1772368200,
+                    "id": "eur-1",
+                    "leaked": False,
+                },
+            ]
+            (raw_dir / "days_2026_01.json").write_text(
+                json.dumps([{"events": events}]), encoding="utf-8"
+            )
+            (raw_dir / "days_2026_02.json").write_text(
+                json.dumps([{"events": events}]), encoding="utf-8"
+            )
+
+            # First run: narrow scope — USD/high only.
+            r1 = _populate.run_populate(
+                cache_dir=cache_dir,
+                raw_dir=str(raw_dir),
+                currencies=["USD"],
+                impacts=["high"],
+            )
+            self.assertEqual(r1["populated"], 2)
+
+            # Second run: wider scope — USD+EUR, high+holiday.
+            r2 = _populate.run_populate(
+                cache_dir=cache_dir,
+                raw_dir=str(raw_dir),
+                currencies=["USD", "EUR"],
+                impacts=["high", "holiday"],
+            )
+            self.assertEqual(
+                r2["populated"], 2,
+                "BL-01: ALL months must be rebuilt on wider-scope run, not just the first",
+            )
+            self.assertEqual(r2["skipped"], 0)
+
+            # Both parquets must contain EUR rows (proving they were rebuilt, not skipped).
+            for month in ["2026-01", "2026-02"]:
+                df = pd.read_parquet(cache_dir / f"{month}.parquet")
+                eur_rows = df[df["currency"] == "EUR"]
+                self.assertGreater(
+                    len(eur_rows), 0,
+                    f"BL-01: {month} parquet must contain EUR rows after wider-scope rebuild",
+                )
+
 
 if __name__ == "__main__":
     unittest.main()
