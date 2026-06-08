@@ -206,3 +206,44 @@ class CliRoutingTests(unittest.TestCase):
             ])
 
         self.assertEqual(captured["impacts"], ["high", "holiday"])
+
+
+class CliValidateMonthTests(unittest.TestCase):
+    """WR-05: _validate_month must range-check the month integer to [1, 12]."""
+
+    def test_month_99_exits_code_1(self):
+        """'2024-99' must produce sys.exit(1) with an error message, not a traceback."""
+        buf_err = io.StringIO()
+        with contextlib.redirect_stderr(buf_err):
+            with self.assertRaises(SystemExit) as cm:
+                cli.main(["populate", "--start", "2024-99", "--raw-dir", "out"])
+        self.assertEqual(cm.exception.code, 1)
+
+    def test_month_00_exits_code_1(self):
+        """'2024-00' must produce sys.exit(1) with an error message, not a traceback."""
+        buf_err = io.StringIO()
+        with contextlib.redirect_stderr(buf_err):
+            with self.assertRaises(SystemExit) as cm:
+                cli.main(["populate", "--end", "2024-00", "--raw-dir", "out"])
+        self.assertEqual(cm.exception.code, 1)
+
+    def test_month_13_exits_code_1(self):
+        """'2024-13' must produce sys.exit(1) — 13 is out of the 1–12 range."""
+        buf_err = io.StringIO()
+        with contextlib.redirect_stderr(buf_err):
+            with self.assertRaises(SystemExit) as cm:
+                cli.main(["populate", "--start", "2024-13", "--raw-dir", "out"])
+        self.assertEqual(cm.exception.code, 1)
+
+    def test_valid_month_does_not_exit(self):
+        """A valid month string '2024-03' passes validation without sys.exit."""
+        captured = {}
+
+        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir):
+            captured["start"] = start
+            return {"populated": 0, "skipped": 0, "empty": 0}
+
+        with patch.object(cli._populate, "run_populate", side_effect=fake_run_populate):
+            cli.main(["populate", "--start", "2024-03", "--raw-dir", "out"])
+
+        self.assertEqual(captured["start"], "2024-03")
