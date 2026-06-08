@@ -1,13 +1,16 @@
 """
 forexfactory CLI
 ================
-Unified console script ``forexfactory`` exposing ``populate`` and ``query``
-subcommands backed by ``_populate.run_populate`` and ``_query.run_query``.
+Unified console script ``forexfactory`` exposing ``populate``, ``refresh``,
+and ``query`` subcommands.
 
 Usage::
 
     # Populate the cache from on-disk raw JSON (zero network calls, SC2):
     forexfactory populate --raw-dir out [--cache-dir DIR]
+
+    # Refresh: fetch months not yet cached over the network (D-11, SRC-02):
+    forexfactory refresh [--currency USD] [--start 2026-04] [--cache-dir DIR]
 
     # Query the cache; prints the result parquet path to stdout (D-10, SC3):
     forexfactory query --currency USD --impact high [--cache-dir DIR]
@@ -20,7 +23,7 @@ import logging
 import sys
 from pathlib import Path
 
-from forexfactory import _populate, _query
+from forexfactory import _populate, _query, _refresh, _scrape
 
 # ====== CONFIG ======
 # No standalone constants — CLI arg defaults derive from the service modules.
@@ -98,6 +101,52 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
 
+    # ── refresh ───────────────────────────────────────────────────────────────
+    rfr = subparsers.add_parser(
+        "refresh",
+        help="Fetch months not yet cached over the network (D-11, SRC-02)",
+    )
+    rfr.add_argument(
+        "--currency", dest="currency", action="append", metavar="CURRENCY",
+        help="Currency to fetch (repeatable; default: USD) [D-12]",
+    )
+    rfr.add_argument(
+        "--impact", dest="impact", action="append", metavar="IMPACT",
+        help="Impact level to fetch (repeatable; default: high holiday) [D-12]",
+    )
+    rfr.add_argument(
+        "--start", default=None, metavar="YYYY-MM",
+        help="First month to fetch (default: gap-fill from last cached — D-11)",
+    )
+    rfr.add_argument(
+        "--end", default=None, metavar="YYYY-MM",
+        help="Last month to fetch (default: current month — D-11)",
+    )
+    rfr.add_argument(
+        "--cache-dir", default=None, metavar="DIR",
+        help="Override cache directory (default: ~/.cache/forexfactory) [CACHE-01]",
+    )
+    rfr.add_argument(
+        "--between-pages-delay",
+        type=float,
+        default=_scrape.BETWEEN_PAGES_DELAY,
+        metavar="SECONDS",
+        help=(
+            "Seconds to sleep between month requests "
+            f"(default: {_scrape.BETWEEN_PAGES_DELAY}) [D-11]"
+        ),
+    )
+    rfr.add_argument(
+        "--retry-delay",
+        type=float,
+        default=_scrape.RETRY_DELAY,
+        metavar="SECONDS",
+        help=(
+            "Seconds to sleep before retrying a failed month "
+            f"(default: {_scrape.RETRY_DELAY}) [D-11]"
+        ),
+    )
+
     # ── query ─────────────────────────────────────────────────────────────────
     qry = subparsers.add_parser(
         "query",
@@ -135,6 +184,23 @@ def main(argv: list[str] | None = None) -> int:
     _validate_month(args.end, "--end")
 
     # ── dispatch ──────────────────────────────────────────────────────────────
+    if args.command == "refresh":
+        cache_dir = Path(args.cache_dir) if args.cache_dir is not None else None
+        result = _refresh.run_refresh(
+            currencies=args.currency,   # None → service applies D-04 default
+            impacts=args.impact,        # None → service applies D-04 default
+            start=args.start,
+            end=args.end,
+            cache_dir=cache_dir,
+            between_pages_delay=args.between_pages_delay,
+            retry_delay=args.retry_delay,
+        )
+        logger.info(
+            "[refresh] done — fetched=%d skipped=%d failed=%d",
+            result["fetched"], result["skipped"], result["failed"],
+        )
+        return 0
+
     if args.command == "populate":
         cache_dir = Path(args.cache_dir) if args.cache_dir is not None else None
         result = _populate.run_populate(
