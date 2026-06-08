@@ -194,5 +194,54 @@ class ScrapeTests(unittest.TestCase):
                              "no raw file must be written when scrape returns empty days")
 
 
+class ExtractDaysFixtureTests(unittest.TestCase):
+    """QUAL-05: Parser regression against real-HTML fixtures. D-10/D-11."""
+
+    def _fixture(self, name: str) -> str:
+        return (Path(__file__).parent / "fixtures" / name).read_text(encoding="utf-8")
+
+    def test_form1_whole_object_assignment_rich_month(self):
+        """form1: = {...} form; unquoted keys + single-quoted strings parsed; data-bearing events returned."""
+        html = self._fixture("form1_rich_month.html")
+        days = scraper.extract_days(html)
+        self.assertGreater(len(days), 0)
+        all_events = [e for day in days for e in day.get("events", [])]
+        data_events = [e for e in all_events if e.get("hasDataValues") is True]
+        self.assertGreater(len(data_events), 0)
+        event = data_events[0]
+        self.assertEqual(event["currency"], "USD")
+        self.assertIn("impactName", event)
+        self.assertIn("prefixedName", event)
+        self.assertIn("id", event)
+        self.assertTrue(event.get("forecast"))  # non-empty raw forecast string
+        self.assertTrue(event.get("hasDataValues"))
+
+    def test_form2_bracket_assignment_no_data(self):
+        """form2: [n]={...} bracket form; unquoted 'days:' key; speech events with hasDataValues False."""
+        html = self._fixture("form2_bracket_no_data.html")
+        days = scraper.extract_days(html)
+        all_events = [e for day in days for e in day.get("events", [])]
+        self.assertGreater(len(all_events), 0)
+        no_data_events = [e for e in all_events if e.get("hasDataValues") is False]
+        self.assertGreater(len(no_data_events), 0)
+        event = no_data_events[0]
+        self.assertFalse(event.get("hasDataValues"))
+        self.assertEqual(event.get("forecast"), "")
+
+    def test_empty_month_returns_no_events(self):
+        """empty_month: days array is empty; extract_days returns zero total events."""
+        html = self._fixture("empty_month.html")
+        days = scraper.extract_days(html)
+        total_events = sum(len(day.get("events", [])) for day in days)
+        self.assertEqual(total_events, 0)
+
+    def test_multi_candidate_selects_best_days(self):
+        """multi_candidate: two state objects; _select_best_days picks the richest (most days+events)."""
+        html = self._fixture("multi_candidate.html")
+        days = scraper.extract_days(html)
+        total_events = sum(len(day.get("events", [])) for day in days)
+        self.assertGreater(total_events, 1)  # richest candidate has 3 events, sparse has 0
+
+
 if __name__ == "__main__":
     unittest.main()
