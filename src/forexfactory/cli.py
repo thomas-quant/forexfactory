@@ -49,8 +49,11 @@ def _validate_month(value: str | None, name: str) -> None:
         parts = value.split("-")
         if len(parts) != 2:
             raise ValueError("expected exactly two dash-separated parts")
-        int(parts[0])
-        int(parts[1])
+        year, month = int(parts[0]), int(parts[1])
+        # WR-05: range-check month so "2024-99" / "2024-00" produce a clean
+        # argparse error instead of an unhandled ValueError traceback later.
+        if not (1 <= month <= 12):
+            raise ValueError(f"month {month} out of range 1–12")
     except (ValueError, AttributeError):
         logger.error("Invalid %s %r — expected YYYY-MM (e.g. 2024-03)", name, value)
         sys.exit(1)
