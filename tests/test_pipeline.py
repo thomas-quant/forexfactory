@@ -204,5 +204,196 @@ class PipelineDedupTests(unittest.TestCase):
             self.assertGreater(len(df), 0)
 
 
+class ParseValueTests(unittest.TestCase):
+    """Unit tests for _pipeline._parse_value() — D-02 numeric parsing."""
+
+    def test_percent_becomes_fraction(self):
+        """4.3% -> 0.043 (percent divides by 100 per D-02)."""
+        self.assertAlmostEqual(pipeline._parse_value("4.3%"), 0.043)
+
+    def test_negative_percent_preserves_sign(self):
+        """-10.7% -> -0.107 (sign preserved)."""
+        self.assertAlmostEqual(pipeline._parse_value("-10.7%"), -0.107)
+
+    def test_magnitude_suffix_K(self):
+        """-27.4K -> -27400.0 (K = 1e3)."""
+        self.assertAlmostEqual(pipeline._parse_value("-27.4K"), -27400.0)
+
+    def test_magnitude_suffix_M(self):
+        """8.79M -> 8790000.0 (M = 1e6)."""
+        self.assertAlmostEqual(pipeline._parse_value("8.79M"), 8790000.0)
+
+    def test_magnitude_suffix_B(self):
+        """2.0B -> 2000000000.0 (B = 1e9)."""
+        self.assertAlmostEqual(pipeline._parse_value("2.0B"), 2000000000.0)
+
+    def test_magnitude_suffix_T(self):
+        """1.89T -> 1890000000000.0 (T = 1e12)."""
+        self.assertAlmostEqual(pipeline._parse_value("1.89T"), 1890000000000.0)
+
+    def test_plain_number_passes_through(self):
+        """50.8 -> 50.8 (no suffix, no percent)."""
+        self.assertAlmostEqual(pipeline._parse_value("50.8"), 50.8)
+
+    def test_empty_string_returns_nan(self):
+        """Empty string -> float('nan'), NEVER raises, NEVER returns None."""
+        import math
+        result = pipeline._parse_value("")
+        self.assertTrue(math.isnan(result))
+
+    def test_whitespace_only_returns_nan(self):
+        """Whitespace-only string -> float('nan')."""
+        import math
+        self.assertTrue(math.isnan(pipeline._parse_value("   ")))
+
+    def test_angle_bracket_returns_nan(self):
+        """'<0.10%' -> float('nan') (angle bracket prefix — unparseable)."""
+        import math
+        self.assertTrue(math.isnan(pipeline._parse_value("<0.10%")))
+
+    def test_pass_string_returns_nan(self):
+        """'Pass' -> float('nan') (non-numeric parliamentary/vote outcome)."""
+        import math
+        self.assertTrue(math.isnan(pipeline._parse_value("Pass")))
+
+    def test_yes_string_returns_nan(self):
+        """'Yes' -> float('nan') (non-numeric treaty vote outcome)."""
+        import math
+        self.assertTrue(math.isnan(pipeline._parse_value("Yes")))
+
+    def test_pipe_separated_returns_nan(self):
+        """'1.34|2.6' -> float('nan') (bond auction yield|bid-to-cover — pipe blocks match)."""
+        import math
+        self.assertTrue(math.isnan(pipeline._parse_value("1.34|2.6")))
+
+    def test_lowercase_suffix_k_handled(self):
+        """Lowercase 'k' suffix is handled case-insensitively."""
+        self.assertAlmostEqual(pipeline._parse_value("1.5k"), 1500.0)
+
+    def test_returns_float_not_none(self):
+        """_parse_value must return float('nan'), not Python None, for unparseable input."""
+        result = pipeline._parse_value("")
+        self.assertIsInstance(result, float, "_parse_value must return float, not None")
+
+
+class FlattenEventsWidenedTests(unittest.TestCase):
+    """Phase-2 schema fields present in flatten_events output (D-01/DATA-02/03/04)."""
+
+    _EVENT = {
+        "currency": "USD",
+        "impactName": "High Impact Expected",
+        "prefixedName": "US CPI y/y",
+        "dateline": 1772368200,
+        "id": 12345,
+        "leaked": False,
+        "forecast": "4.3%",
+        "actual": "4.5%",
+        "previous": "4.1%",
+        "revision": "",
+        "actualBetterWorse": 1,
+        "revisionBetterWorse": 0,
+        "ebaseId": 999,
+        "country": "US",
+        "hasDataValues": True,
+        # UI/internal fields that MUST be dropped (DATA-04)
+        "checker": "x",
+        "soloTitle": "CPI",
+        "siteId": 42,
+    }
+
+    def _flatten_one(self):
+        days = [{"events": [self._EVENT]}]
+        return list(pipeline.flatten_events(days))[0]
+
+    def test_forecast_raw_is_verbatim_string(self):
+        """forecast_raw is the verbatim FF string ('4.3%'), not the parsed number."""
+        r = self._flatten_one()
+        self.assertEqual(r["forecast_raw"], "4.3%")
+
+    def test_forecast_parsed_is_fraction(self):
+        """forecast == _parse_value(forecast_raw) == 0.043."""
+        r = self._flatten_one()
+        self.assertAlmostEqual(r["forecast"], 0.043)
+
+    def test_actual_raw_is_verbatim_string(self):
+        """actual_raw is verbatim '4.5%'."""
+        r = self._flatten_one()
+        self.assertEqual(r["actual_raw"], "4.5%")
+
+    def test_previous_raw_is_verbatim_string(self):
+        """previous_raw is verbatim '4.1%'."""
+        r = self._flatten_one()
+        self.assertEqual(r["previous_raw"], "4.1%")
+
+    def test_revision_raw_empty_string_when_absent(self):
+        """revision_raw is '' when the FF field is empty."""
+        r = self._flatten_one()
+        self.assertEqual(r["revision_raw"], "")
+
+    def test_all_phase2_source_keys_present(self):
+        """All source keys that produce the 19 PHASE2_COLUMNS must be in the yielded dict."""
+        r = self._flatten_one()
+        expected_keys = [
+            "date", "time_utc", "currency", "impact", "title", "id", "leaked",
+            "forecast_raw", "actual_raw", "previous_raw", "revision_raw",
+            "forecast", "actual", "previous", "revision",
+            "actualBetterWorse", "revisionBetterWorse", "ebaseId", "country", "hasDataValues",
+        ]
+        for key in expected_keys:
+            self.assertIn(key, r, f"key '{key}' missing from flatten_events output")
+
+    def test_ui_fields_not_in_output(self):
+        """DATA-04: UI/internal fields (checker, soloTitle, siteId) must be absent."""
+        r = self._flatten_one()
+        self.assertNotIn("checker", r)
+        self.assertNotIn("soloTitle", r)
+        self.assertNotIn("siteId", r)
+
+    def test_actual_better_worse_preserved(self):
+        """actualBetterWorse integer value is passed through unchanged."""
+        r = self._flatten_one()
+        self.assertEqual(r["actualBetterWorse"], 1)
+
+    def test_ebase_id_preserved(self):
+        """ebaseId integer is passed through unchanged."""
+        r = self._flatten_one()
+        self.assertEqual(r["ebaseId"], 999)
+
+    def test_has_data_values_true(self):
+        """hasDataValues=True is preserved from the event dict."""
+        r = self._flatten_one()
+        self.assertTrue(r["hasDataValues"])
+
+    def test_country_preserved(self):
+        """country field is passed through from the event dict."""
+        r = self._flatten_one()
+        self.assertEqual(r["country"], "US")
+
+    def test_phase2_columns_constant_exists(self):
+        """PHASE2_COLUMNS constant is importable, starts with datetime_utc, and contains new fields."""
+        self.assertTrue(hasattr(pipeline, "PHASE2_COLUMNS"))
+        self.assertEqual(pipeline.PHASE2_COLUMNS[0], "datetime_utc")
+        self.assertIn("forecast_raw", pipeline.PHASE2_COLUMNS)
+        self.assertIn("hasDataValues", pipeline.PHASE2_COLUMNS)
+        self.assertIn("ebaseId", pipeline.PHASE2_COLUMNS)
+        self.assertIn("actualBetterWorse", pipeline.PHASE2_COLUMNS)
+
+    def test_solo_title_not_used_as_title_fallback(self):
+        """soloTitle must NOT be used as title fallback (it is in the DATA-04 drop list)."""
+        # Event with soloTitle but NO prefixedName or name
+        ev_no_name = {
+            "currency": "USD",
+            "impactName": "High Impact Expected",
+            "dateline": 1772368200,
+            "soloTitle": "Solo CPI",
+            "id": 1,
+            "hasDataValues": False,
+        }
+        days = [{"events": [ev_no_name]}]
+        r = list(pipeline.flatten_events(days))[0]
+        # soloTitle must not be used; fallback is empty string
+        self.assertNotEqual(r["title"], "Solo CPI")
+
+
 if __name__ == "__main__":
     unittest.main()
