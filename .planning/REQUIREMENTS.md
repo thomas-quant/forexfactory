@@ -29,7 +29,7 @@ Requirements for the initial packaged release. Each maps to a roadmap phase.
 - [x] **DATA-02**: Each event carries data values `forecast`, `actual`, `previous`, `revision`, `hasDataValues`, stored as both raw strings and parsed numeric
 - [x] **DATA-03**: Each event carries surprise/identity fields `actualBetterWorse`, `revisionBetterWorse`, `ebaseId`, `country`
 - [x] **DATA-04**: FF UI/internal fields (`checker`, `releaser`, `siteId`, `show*`/`enable*`, `notice`, naming duplicates) are dropped
-- [ ] **DATA-05**: Speech/holiday/no-data events are retained in the cache (distinguished by `hasDataValues`); dropping them becomes an optional query-time filter rather than a hard pipeline step
+- [x] **DATA-05**: Speech/holiday/no-data events are retained in the cache (distinguished by `hasDataValues`); dropping them becomes an optional query-time filter rather than a hard pipeline step
 
 ### Data Source
 
@@ -88,7 +88,7 @@ Populated during roadmap creation — each requirement maps to exactly one phase
 | DATA-02 | Phase 2 | Complete |
 | DATA-03 | Phase 2 | Complete |
 | DATA-04 | Phase 2 | Complete |
-| DATA-05 | Phase 2 | Pending |
+| DATA-05 | Phase 2 | Complete |
 | SRC-01 | Phase 2 | Complete |
 | SRC-02 | Phase 1 | Complete |
 | QUAL-01 | Phase 1 | Complete |
