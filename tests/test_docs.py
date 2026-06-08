@@ -43,3 +43,22 @@ def test_readme_schema_documents_current_parquet_columns():
     assert "| `title` |" in text
     assert "| `id` |" in text
     assert "| `leaked` | boolean | Whether Forex Factory marked the event as leaked |" in text
+
+    # Phase-2 raw value strings (DATA-02)
+    assert "| `forecast_raw` |" in text
+    assert "| `actual_raw` |" in text
+    assert "| `previous_raw` |" in text
+    assert "| `revision_raw` |" in text
+
+    # Phase-2 parsed numerics (DATA-02)
+    assert "| `forecast` |" in text
+    assert "| `actual` |" in text
+    assert "| `previous` |" in text
+    assert "| `revision` |" in text
+
+    # Phase-2 surprise flags and identity (DATA-03)
+    assert "| `actualBetterWorse` |" in text
+    assert "| `revisionBetterWorse` |" in text
+    assert "| `ebaseId` |" in text
+    assert "| `country` |" in text
+    assert "| `hasDataValues` |" in text
