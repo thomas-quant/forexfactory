@@ -72,7 +72,21 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. `pytest tests/` passes including at least one fixture-based test that feeds a realistic saved HTML fragment into `extract_days()` and asserts correct event output
   5. A documented decision exists (PROJECT.md Key Decisions or inline in the source) stating whether the apply-settings endpoint replaces or remains a documented fallback to the HTML parser
 
-**Plans**: TBD
+**Plans**: 5 plans
+
+**Wave 1**
+
+  - [ ] 02-01-PLAN.md — Schema core: _parse_value + widened flatten_events + force rebuild (DATA-02/03/04)
+  - [ ] 02-03-PLAN.md — QUAL-05 parser fixtures + ExtractDaysFixtureTests
+  - [ ] 02-04-PLAN.md — SRC-01 apply-settings spike + documented decision (SRC-01)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+  - [ ] 02-02-PLAN.md — Query no-data filter + --include-no-data/--force CLI surface (DATA-05)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+  - [ ] 02-05-PLAN.md — Cache rebuild to wide schema + raw-JSON drop (phase exit)
 
 ### Phase 3: Cache Lifecycle
 
@@ -96,5 +110,5 @@ Phases execute in numeric order: 1 → 2 → 3
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Installable Data Provider | 7/7 | Complete    | 2026-06-08 |
-| 2. Full Analytical Schema + Source Spike | 0/TBD | Not started | - |
+| 2. Full Analytical Schema + Source Spike | 0/5 | Planned | - |
 | 3. Cache Lifecycle | 0/TBD | Not started | - |
