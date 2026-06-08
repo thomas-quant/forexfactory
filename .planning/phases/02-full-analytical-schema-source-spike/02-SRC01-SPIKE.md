@@ -1,7 +1,7 @@
 # SRC-01 Spike Notes: FF `apply-settings` POST Endpoint Investigation
 
 **Spike date:** 2026-06-08
-**Status:** Task 1 (automated curl_cffi recon) COMPLETE — awaiting Task 2 (human DevTools capture)
+**Status:** COMPLETE — Task 1 (automated curl_cffi recon) + Task 2 (orchestrator network-request recon) + Task 3 (documented decision SC5)
 
 ---
 
@@ -224,32 +224,111 @@ inline `calendarComponentStates` JS object in every HTML response.
 
 ---
 
-## Part 2: Live DevTools Capture (Task 2 — PENDING HUMAN INPUT)
+## Part 2: Live DevTools Capture (Task 2 — superseded by Part 3 recon)
 
-The automated recon above confirms the automated findings but cannot substitute for an
-actual browser DevTools capture. The human checkpoint (Task 2) asks:
+The original human checkpoint asked for live browser DevTools recon of apply-settings.
+Instead, the user redirected the recon to a deeper curl_cffi probe: "load
+/calendar?month=jan.2015 and analyse its network requests". The orchestrator performed
+this extended recon using `_scrape.build_session()` + `impersonate="chrome"` (D-07 — no
+browser tooling, nothing added to pyproject).
 
-1. Open https://www.forexfactory.com/calendar in a browser with DevTools → Network tab
-2. Click prev/next navigation arrows; find any POST to `/calendar/apply-settings/...`
-3. Note the full URL, request headers, body/params, and response JSON shape
-4. If possible, confirm whether any navigation mechanism reaches arbitrary historical months
-
-The human can also confirm the automated finding by observing that navigation uses
-`data-endpoint="?week=jun7.2026&date=may1.2026"` (a GET pattern, not a POST).
-
-**Expected outcome from human recon:** confirm that:
-- Navigation clicks fire GET requests (not POSTs) to `/calendar?week=...&date=...`
-- `apply-settings` POSTs are only fired when the user changes filter settings (currencies, impacts)
-- No POST mechanism exists for fetching arbitrary historical months
+The verified findings from that recon SUPERSEDE the earlier Task-1 forecast ("no clean
+endpoint exists"). A clean JSON path DOES exist via `/calendar/more` and
+`/calendar/graph` — the Task-1 conclusion was wrong in that narrow claim. See Part 3 for
+the complete corrected picture and the final NOT-ADOPTED rationale.
 
 ---
 
-## Pending: Task 3 (Post-human-checkpoint)
+## Part 3: Network-request recon — apply-settings superseded (Task 2 resolution)
 
-Task 3 will:
-1. Append the human DevTools capture findings
-2. Write the formal D-06 four-criteria decision
-3. Update `.planning/PROJECT.md` Key Decisions with the SRC-01 outcome (SC5)
+**Correction to Task-1 forecast:** Task 1 concluded "no clean endpoint exists". That was
+wrong. The orchestrator's deeper probe of the calendar-production.js bundle (the main JS
+bundle NOT loaded during the minimal session in Task 1) and the `window.FF` globals
+revealed three additional endpoints. Two of them (`/calendar/more` and
+`/calendar/graph`) carry full-fidelity JSON. The correct conclusion is: **clean JSON paths
+DO exist; they are simply not ergonomically better than the existing `?month=` GET for
+per-month bulk extraction**.
 
-Current forecast: NOT ADOPTED (HTML parse stays primary; apply-settings is a settings-save
-endpoint only). SC5 will be satisfied with a "not adopted" decision backed by this evidence.
+### Endpoint inventory (discovered from window.FF globals + calendar-production.js)
+
+All endpoints are relative to `https://www.forexfactory.com`.
+
+| Endpoint | Method | Auth/CSRF | Returns |
+|---|---|---|---|
+| `POST /calendar/apply-settings/{id}?navigation=0|1` | POST | Session cookies only | Settings save + ±1 nav ONLY (confirmed Task 1 — settings-save endpoint) |
+| `POST /calendar/more/{instanceId}` | POST | Session cookies only | Clean `application/json` — APPEND chunk AFTER the requested window |
+| `GET /calendar/graph/{eventId}?limit=100&site_id={siteId}` | GET | Session cookies only | Clean `application/json` — numeric time-series per recurring event |
+| `GET /calendar/details/{ebaseId}-{eventId}` | GET | Session cookies only | Per-event detail JSON |
+| `GET /calendar?range=<startTok>-<endTok>` | GET | Session cookies only | Embedded HTML (calendarComponentStates) for arbitrary date ranges |
+| `wss://calendar-feed.forexfactory.com:2087` | WebSocket | — | Live actual-value updates (not historical) |
+
+Cookie values REDACTED — only presence/shape recorded. No CSRF token is required by any endpoint.
+
+### /calendar/more — the clean JSON fallback
+
+`POST /calendar/more/{instanceId}` accepts `FormData` with `begin_date` and `end_date`
+fields and returns clean `application/json`.
+
+**Critical behaviour (append-paginated):** It returns the fixed ~1-week chunk AFTER the
+requested window, not the window itself:
+- `begin=Jan 1 2015, end=Jan 31 2015` → returned Feb 1–7, 98 events
+- `begin=Jan 5 2015, end=Jan 9 2015` → returned Jan 10–16, 76 events
+
+Full 50-field parity with the HTML `extract_days` output was confirmed (field set-diff
+empty both ways). Reaches arbitrary history: `more(Jan 2010)` = 99 events with real data.
+No CSRF/auth needed — session cookies from a prior GET suffice.
+
+### /calendar/graph — high-value time-series endpoint
+
+`GET /calendar/graph/{eventId}?limit=100&site_id={siteId}` returns per-event historical
+numeric time-series: `data.events[]` each with `date`, `dateline`,
+`actual_formatted` + `actual` (numeric), `forecast_formatted` + `forecast`,
+`revision_formatted` + `revision`, `is_most_recent`; `meta.is_more` for deeper history.
+
+**Important:** requires the event's `id` + `siteId` (using `ebaseId` → 400 "Invalid
+event"). A sample probe returned history back to 2018+ for one recurring USD event.
+
+### /calendar?range= — arbitrary date-range GET
+
+`GET /calendar?range=jan1.2015-jan31.2015` returns embedded `calendarComponentStates`
+HTML for the full custom range. Jan 2015 full month = 31 days / 350 events. Splits
+cleanly: `jan1-15` = 173, `jan16-31` = 177 — no data loss at the boundary. Uses the
+same `calendarComponentStates` parser as `?month=`.
+
+### Corrected D-06 four-part adopt-bar (evaluating /calendar/more as candidate primary)
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| 1. Field parity (no regression) | **PASS** | more-JSON event key set == HTML extract_days exactly; set-diff empty both ways; 50 fields incl. forecast/actual/previous/revision, actualBetterWorse, revisionBetterWorse, ebaseId, country, hasDataValues, id, leaked |
+| 2. Arbitrary history to 2010 | **PASS** | more(Jan 2010) = 99 events with real data; more(Jan 2015) = 98 events; graph series returned history to 2018+ for sampled event |
+| 3. curl_cffi / no-auth | **PASS** | Session cookies from a single GET suffice; no CSRF token; no login |
+| 4. Stable at polite rate (bounded probe) | **PASS (caveat)** | 50 requests across all 3 endpoints, graduated 1.0s → 0.3s → 0.0s, ZERO throttling (no 403/429/503). Latency: graph ~115ms, more ~190ms, range ~340ms. **CAVEAT:** bounded probe (~50 reqs / ~1 min), NOT proven at scale. All 3 endpoints gated by the same Cloudflare TLS-fingerprint layer (`__cf_bm`), NOT by request rate at these volumes — none is "more Cloudflare-limited" than another; all equally require the curl_cffi impersonation the package already ships. |
+
+### Cloudflare / rate probe summary
+
+All endpoints sit behind the same `__cf_bm` Cloudflare Bot Management layer. At the
+probe scale (~50 requests, ~1 min, polite delays), there was zero throttling on any
+endpoint. The relevant anti-bot measure is the TLS fingerprint (already handled by
+`curl_cffi`), not request rate at these volumes. The CAVEAT stands: this is a bounded
+probe, not a proven-at-scale result.
+
+### Final NOT-ADOPTED decision rationale (SC5)
+
+`/calendar/more` clears all four D-06 criteria on data fidelity. However, it is
+**append-paginated**: it returns the fixed ~1-week chunk AFTER the requested window, so
+per-month bulk extraction would require many weekly POSTs + assembly/filtering.
+
+The existing HTML `?month=` GET returns a clean 31-day / 350-event month in a **single
+request**, and its parser was hardened with a fixture matrix in Plan 02-03. There is no
+ergonomic reason to replace it with an append-paginated JSON endpoint requiring 4–5
+requests per month.
+
+**Decision:** NOT ADOPTED as bulk primary.
+- `apply-settings` is rejected outright (settings-save endpoint; cannot navigate history).
+- `/calendar/more` is a **validated clean-JSON fallback** — documented here; clears D-06
+  but is outperformed ergonomically by HTML `?month=`.
+- `/calendar/graph/{id}?site_id=` is a **high-value future enhancement** (numeric
+  per-event time-series for expected-vs-surprise history) — filed as a deferred item.
+- HTML `?month=` GET + `calendarComponentStates` parser **remains the bulk primary**.
+- D-07 holds: no browser/devtools/Playwright tooling was added to pyproject.toml. The
+  extended recon used only `_scrape.build_session()` + curl_cffi Chrome impersonation.
