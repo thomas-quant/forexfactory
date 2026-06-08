@@ -670,27 +670,35 @@ The spike produces a `DECISION.md` (or inline comment in `PROJECT.md`) documenti
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+All four open questions are resolved for planning: each is either deferred to the
+SRC-01 spike (a spike *deliverable*, not a blocking research gap) or implemented
+directly in the Phase-2 plans, as marked below.
 
 1. **`navigation` parameter semantics (SRC-01)**
    - What we know: URL contains `?navigation=1`; FF calendar uses prev/next buttons for pagination; direction and target encoding are unknown without devtools capture.
    - What's unclear: Whether navigation is relative (±N months from server-side session state) or absolute (a month token in the POST body). If relative, replaying a POST request out of context may not work.
    - Recommendation: DevTools capture is the only reliable answer. This is a spike deliverable, not a research deliverable.
+   - RESOLVED: deferred to spike plan 02-04 (the D-07 live-recon deliverable). Not a planning blocker — the schema thread (02-01) is source-agnostic per D-05 and does not depend on the answer.
 
 2. **`id` field storage type migration**
    - What we know: `id` in JSON is `int`; the Phase-1 `flatten_events()` uses `ev.get("id", "")` which returns `int` or empty string `""`. The Phase-1 parquets therefore have `id` as `object` dtype in months where all events have int IDs (pandas infers object when the fallback `""` is mixed with ints in some code paths).
    - What's unclear: Whether the Phase-1 per-month parquets actually have `id` as `object` or `int64`. This affects whether the cache rebuild is a schema migration or just a widening.
    - Recommendation: Check one Phase-1 parquet dtype for `id` before writing the migration plan. If `object`, the cast to `Int64` in Phase 2 is a type change (breaking if consumer code does `df['id'].astype(int)`). Planner should note this as a potential downstream incompatibility.
+   - RESOLVED: the unconditional `Int64` cast in 02-01 Task 2 handles both starting dtypes (`object` and `int64`); moreover the cache is currently empty, so the rebuild is a fresh build rather than a migration — the question is moot for execution.
 
 3. **Schema version stamping mechanism**
    - What we know: The planner needs to drive a wipe-and-rebuild; a `schema_version` in `manifest.json` enables future automatic detection.
    - What's unclear: Whether Phase 2 should also read the version on populate (to auto-force-rebuild on version mismatch) or only stamp it post-rebuild.
    - Recommendation: For Phase 2, stamp `"schema_version": "2"` in manifest after rebuild and store `SCHEMA_VERSION = "2"` in `_cache.py`. Full auto-rebuild-on-mismatch is a Phase-3 enhancement (CACHE-03 territory).
+   - RESOLVED: stamp-only for Phase 2 — `SCHEMA_VERSION = "2"` in `_cache.py`, written to `manifest.json` after rebuild (02-01 Task 2). Auto-rebuild-on-mismatch is explicitly deferred to Phase 3.
 
 4. **`actualBetterWorse` = 0 for no-data events**
    - What we know: Every event (including speeches and holidays) has `actualBetterWorse: 0` in the raw JSON — even when there is no actual/forecast comparison to make.
    - What's unclear: Whether 0 means "neutral/inline" or "no comparison available". The FF UI uses different styling for the three values, and 0 is the default when there's no actual data.
    - Recommendation: Store the raw int as specified by D-03. Add an inline comment in the code noting that 0 can mean "no comparison performed" (speeches/holidays) or "inline with forecast" (data releases). Do not map to categorical in Phase 2.
+   - RESOLVED: store the raw int per D-03 (02-01 Task 1), with an inline code comment noting `0` can mean "no comparison performed" (speeches/holidays) vs "inline with forecast" (data releases). No categorical mapping in Phase 2.
 
 ---
 
