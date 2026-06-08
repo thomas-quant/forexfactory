@@ -172,9 +172,7 @@ forexfactory/
 |   |-- test_query.py
 |   |-- test_refresh.py
 |   `-- test_scrape.py
-`-- out/
-    |-- days_YYYY_MM.json
-    `-- ...
+`-- out/                    # optional raw-staging dir (populated on re-scrape)
 ```
 
 ## Performance
