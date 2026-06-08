@@ -29,7 +29,14 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. `forexfactory query --currency USD --impact high` prints an absolute path to a parquet file that opens cleanly with `pd.read_parquet()`
   4. The library call `forexfactory.get(currencies=["USD"], impacts=["high"])` returns a `pathlib.Path` pointing to the populated parquet
   5. Running `forexfactory populate` on months where a prior scrape failed does not permanently skip those months due to a stale empty JSON file
-**Plans**: TBD
+**Plans**: 7 plans
+  - [ ] 01-01-PLAN.md — Installable package scaffold + reused pipeline engine (QUAL-01/02)
+  - [ ] 01-02-PLAN.md — Cache layer: per-month paths + manifest sidecar (CACHE-01, D-01/02/03/08)
+  - [ ] 01-03-PLAN.md — Populate slice: ingest on-disk months → per-month parquet cache (D-04/05/06, SC5)
+  - [ ] 01-04-PLAN.md — Query slice: cache read → consolidated result parquet, library get() (D-07/08/09)
+  - [ ] 01-05-PLAN.md — CLI integration + walking-skeleton end-to-end (PKG-02, D-10/12)
+  - [ ] 01-06-PLAN.md — Refresh network slice + scrape relocation (SRC-02, QUAL-03/04, D-11)
+  - [ ] 01-07-PLAN.md — Docs + doc-regression sweep (README/CLI/schema, remove api.txt)
 
 ### Phase 2: Full Analytical Schema + Source Spike
 **Goal**: The cached parquet contains all fields needed for expected-vs-surprise analysis (forecast/actual/previous/revision as raw strings and parsed numerics, surprise flags, identity fields); the fragile HTML/JS parser is protected by fixture-based regression tests; and the FF apply-settings POST endpoint has been investigated with a documented decision on whether to adopt it.
@@ -45,7 +52,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: TBD
 
 ### Phase 3: Cache Lifecycle
-**Goal**: The cache self-manages: a query that exceeds cached scope triggers automatic fetch and widening; months that were cached as future-dated automatically re-fetch once they have fully matured; and a force-refresh flag bypasses the skip-if-exists logic for any given range.
+**Goal**: The cache self-manages: a query that exceeds cached scope triggers automatic fetch and widening; months that were scraped while future-dated automatically re-fetch once they have fully matured; and a force-refresh flag bypasses the skip-if-exists logic for any given range.
 **Mode:** mvp
 **Depends on**: Phase 2
 **Requirements**: CACHE-03, CACHE-05, CACHE-06
@@ -62,6 +69,6 @@ Phases execute in numeric order: 1 → 2 → 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Installable Data Provider | 0/TBD | Not started | - |
+| 1. Installable Data Provider | 0/7 | Not started | - |
 | 2. Full Analytical Schema + Source Spike | 0/TBD | Not started | - |
 | 3. Cache Lifecycle | 0/TBD | Not started | - |
