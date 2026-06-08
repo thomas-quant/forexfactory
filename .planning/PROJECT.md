@@ -51,7 +51,7 @@ A pip-installable Python package that scrapes the [Forex Factory](https://www.fo
 
 **Data source**
 - [x] HTML-scrape-and-parse retained as the source (wired into `refresh`) — ✓ Phase 1 (SRC-02)
-- [ ] Investigate the FF JSON/POST endpoint (`apply-settings`); switch to it if it reliably returns structured data, keeping HTML-scrape-and-parse as a fallback — Phase 2 (SRC-01 spike)
+- [x] Investigate the FF JSON/POST endpoint (`apply-settings`) — NOT ADOPTED (SC5): apply-settings is a settings-save endpoint only; `/calendar/more` is a validated clean-JSON fallback that clears all 4 D-06 criteria but is append-paginated; HTML `?month=` GET stays bulk primary — Phase 2 (SRC-01 spike)
 
 **Code quality (full restructure + fix mapped concerns)**
 - [x] Extract shared deduplication helper (remove copy-paste between `parse_json_to_csv` / `run_pipeline`) — ✓ Phase 1
@@ -74,7 +74,7 @@ A pip-installable Python package that scrapes the [Forex Factory](https://www.fo
 - **The fragile core:** `extract_days()` walks embedded JS character-by-character to convert it to JSON. Any change to FF's bundle silently breaks it; `tests/fixtures/` is currently empty (highest-priority coverage gap). This is the main risk the "investigate the API endpoint" decision aims to reduce.
 - **Rich raw data already on disk:** each raw event carries ~50 fields (forecast/actual/previous/revision, `actualBetterWorse`, `ebaseId`, etc.); today's pipeline discards all but 6. Re-processing existing `out/` data into the new schema requires no re-scraping.
 - **Known concerns** are catalogued in `.planning/codebase/CONCERNS.md` (tech debt, bugs, fragile areas, test gaps) and feed the Active code-quality requirements.
-- **`api.txt`** holds the single lead for the data-source investigation: `https://www.forexfactory.com/calendar/apply-settings/100000?navigation=1` ("possibly can send post requests?").
+- **`api.txt`** (removed in Phase 1) held the single lead for the data-source investigation: `https://www.forexfactory.com/calendar/apply-settings/100000?navigation=1`. The SRC-01 spike (Phase 2) confirmed apply-settings is a settings-save endpoint only; `/calendar/more` is a validated clean-JSON fallback; HTML `?month=` GET remains the bulk primary (see Key Decisions + `02-SRC01-SPIKE.md`).
 
 ## Constraints
 
@@ -93,7 +93,7 @@ A pip-installable Python package that scrapes the [Forex Factory](https://www.fo
 | Freshness: manual for settled history; auto-refresh only matured future months | Past is immutable; only future-dated forecasts need to mature into actuals | Partial — manual settled ✓ Phase 1; matured auto-refresh → Phase 3 |
 | Schema: core + values (raw+parsed) + FF surprise flags + `ebaseId` | Supports expected-vs-surprise and joining a metric's release history | Partial — core fields ✓ Phase 1; values/surprise/identity → Phase 2 |
 | Library main call returns a parquet path (not a DataFrame) | Consistent with the parquet cache contract; caller loads as needed | ✓ Phase 1 (`forexfactory.get() -> Path`) |
-| Investigate FF JSON/POST endpoint, switch if cleaner, HTML fallback | Reduce reliance on the fragile char-by-char JS parser | Pending — Phase 2 (SRC-01 spike); HTML source shipped Phase 1 |
+| Investigate FF JSON/POST endpoint (SRC-01) — NOT ADOPTED (SC5): apply-settings is settings-save only; `/calendar/more` validated clean-JSON fallback (clears all 4 D-06 criteria) but append-paginated so HTML `?month=` GET stays bulk primary; `/calendar/graph` filed as high-value future enhancement (numeric per-event time-series) | Reduce reliance on the fragile char-by-char JS parser; HTML `?month=` parse wins ergonomically (1 request/month vs 4–5 weekly POSTs for `/calendar/more`) | NOT ADOPTED — Phase 2 (SRC-01 spike, 2026-06-08) |
 | Full restructure + fix mapped concerns (vs minimal wrap) | Packaging is the moment to pay down the catalogued debt | ✓ Phase 1 (QUAL-01..04); QUAL-05 + force-refresh → Phase 2/3 |
 
 ## Evolution

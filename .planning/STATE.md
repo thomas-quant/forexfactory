@@ -83,7 +83,7 @@ None yet.
 ### Blockers/Concerns
 
 - The `calendarComponentStates` HTML/JS parser is the highest-risk component; QUAL-05 (fixture tests) is Phase 2 and should be treated as a must-have before widening field extraction
-- SRC-01 is a spike — if the apply-settings endpoint is unreliable the fallback is SRC-02 (HTML parse); no blocking dependency
+- SRC-01 spike COMPLETE: apply-settings NOT ADOPTED (SC5); HTML parse remains primary; /calendar/more validated fallback; /calendar/graph filed as future enhancement (see Deferred Items)
 
 ## Deferred Items
 
@@ -91,6 +91,8 @@ None yet.
 |----------|------|--------|-------------|
 | Distribution | DIST-01: Publish to PyPI | v2 | 2026-06-08 |
 | Cache | CACHE-V2-01: Chunked/streaming for wide scopes | v2 | 2026-06-08 |
+| Source | SRC-GRAPH-01: `GET /calendar/graph/{eventId}?limit=100&site_id={siteId}` — high-value future enhancement; returns clean numeric per-event historical time-series (actual/forecast/revision with numeric values + is_most_recent, meta.is_more); requires event `id` + `siteId` (not ebaseId); directly serves expected-vs-surprise core value without month-by-month scraping. See 02-SRC01-SPIKE.md Part 3. | future | 2026-06-08 |
+| Source | SRC-MORE-01: `POST /calendar/more/{instanceId}` (FormData begin_date, end_date) — validated clean-JSON fallback; clears all 4 D-06 criteria (50-field parity, arbitrary history to 2010, curl_cffi/no-auth, polite-rate stable); NOT adopted as bulk primary because it is append-paginated (~1-week chunk AFTER the requested window). Viable alternative if HTML parse ever breaks. See 02-SRC01-SPIKE.md Part 3. | documented-fallback | 2026-06-08 |
 
 ## Session Continuity
 
