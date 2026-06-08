@@ -21,6 +21,7 @@ def get(
     impacts=None,
     start=None,
     end=None,
+    include_no_data=False,
     cache_dir=None,
 ) -> Path:
     """Return a Path to a filtered Parquet file from the local cache.
@@ -34,5 +35,6 @@ def get(
         impacts=impacts,
         start=start,
         end=end,
+        include_no_data=include_no_data,
         cache_dir=cache_dir,
     )
