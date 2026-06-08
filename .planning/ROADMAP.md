@@ -43,7 +43,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-  - [ ] 01-03-PLAN.md — Populate slice: ingest on-disk months → per-month parquet cache (D-04/05/06, SC5)
+  - [x] 01-03-PLAN.md — Populate slice: ingest on-disk months → per-month parquet cache (D-04/05/06, SC5)
   - [ ] 01-04-PLAN.md — Query slice: cache read → consolidated result parquet, library get() (D-07/08/09)
 
 **Wave 4** *(blocked on Wave 3 completion)*
@@ -95,6 +95,6 @@ Phases execute in numeric order: 1 → 2 → 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Installable Data Provider | 2/7 | In Progress|  |
+| 1. Installable Data Provider | 3/7 | In Progress|  |
 | 2. Full Analytical Schema + Source Spike | 0/TBD | Not started | - |
 | 3. Cache Lifecycle | 0/TBD | Not started | - |

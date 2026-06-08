@@ -17,9 +17,9 @@ Requirements for the initial packaged release. Each maps to a roadmap phase.
 ### Cache
 
 - [x] **CACHE-01**: Data is cached as parquet in a shared user cache dir (default `~/.cache/forexfactory` / OS equivalent), overridable via path/env var
-- [ ] **CACHE-02**: Cache scope (currencies, impacts) is chosen when the cache is populated
+- [x] **CACHE-02**: Cache scope (currencies, impacts) is chosen when the cache is populated
 - [ ] **CACHE-03**: A query that exceeds cached scope auto-fetches the missing data and widens the cache
-- [ ] **CACHE-04**: Settled (fully-past) months are never re-fetched automatically — manual refresh only
+- [x] **CACHE-04**: Settled (fully-past) months are never re-fetched automatically — manual refresh only
 - [ ] **CACHE-05**: Months cached while future-dated are auto-refreshed once the whole month has passed, to fill in `actual` values
 - [ ] **CACHE-06**: A force-refresh capability can re-scrape a given range on demand (CLI flag + library arg)
 
@@ -40,7 +40,7 @@ Requirements for the initial packaged release. Each maps to a roadmap phase.
 
 - [x] **QUAL-01**: Deduplication logic is extracted into a single shared helper (no copy-paste between parse and full-pipeline paths)
 - [x] **QUAL-02**: The `--in-dir` (input directory) option is honored in all execution paths (no silent no-op)
-- [ ] **QUAL-03**: Failed scrapes no longer write empty JSON files that permanently poison the skip logic
+- [x] **QUAL-03**: Failed scrapes no longer write empty JSON files that permanently poison the skip logic
 - [ ] **QUAL-04**: Stale hardcoded date defaults are removed in favor of explicit/sensible behavior
 - [ ] **QUAL-05**: Fixture-based regression tests cover the `calendarComponentStates` parser against realistic saved HTML
 
@@ -79,9 +79,9 @@ Populated during roadmap creation — each requirement maps to exactly one phase
 | PKG-03 | Phase 1 | Complete |
 | PKG-04 | Phase 1 | Complete |
 | CACHE-01 | Phase 1 | Complete |
-| CACHE-02 | Phase 1 | Pending |
+| CACHE-02 | Phase 1 | Complete |
 | CACHE-03 | Phase 3 | Pending |
-| CACHE-04 | Phase 1 | Pending |
+| CACHE-04 | Phase 1 | Complete |
 | CACHE-05 | Phase 3 | Pending |
 | CACHE-06 | Phase 3 | Pending |
 | DATA-01 | Phase 1 | Complete |
@@ -93,7 +93,7 @@ Populated during roadmap creation — each requirement maps to exactly one phase
 | SRC-02 | Phase 1 | Pending |
 | QUAL-01 | Phase 1 | Complete |
 | QUAL-02 | Phase 1 | Complete |
-| QUAL-03 | Phase 1 | Pending |
+| QUAL-03 | Phase 1 | Complete |
 | QUAL-04 | Phase 1 | Pending |
 | QUAL-05 | Phase 2 | Pending |
 
