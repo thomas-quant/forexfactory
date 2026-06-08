@@ -13,7 +13,7 @@ Starting from two working loose scripts and ~195 months of raw data on disk, thi
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Installable Data Provider** - Package scaffold + basic cache + restructured pipeline; delivers the install → populate → query → parquet-path end-to-end path
+- [x] **Phase 1: Installable Data Provider** - Package scaffold + basic cache + restructured pipeline; delivers the install → populate → query → parquet-path end-to-end path (completed 2026-06-08)
 - [ ] **Phase 2: Full Analytical Schema + Source Spike** - Expand the parquet schema with forecast/actual/surprise/identity fields; fixture-test the fragile parser; investigate the FF API endpoint
 - [ ] **Phase 3: Cache Lifecycle** - Auto-widen cache on scope miss; auto-refresh matured future months; force-refresh on demand
 
@@ -56,7 +56,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-  - [ ] 01-07-PLAN.md — Docs + doc-regression sweep (README/CLI/schema, remove api.txt)
+  - [x] 01-07-PLAN.md — Docs + doc-regression sweep (README/CLI/schema, remove api.txt)
 
 ### Phase 2: Full Analytical Schema + Source Spike
 
@@ -95,6 +95,6 @@ Phases execute in numeric order: 1 → 2 → 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Installable Data Provider | 6/7 | In Progress|  |
+| 1. Installable Data Provider | 7/7 | Complete   | 2026-06-08 |
 | 2. Full Analytical Schema + Source Spike | 0/TBD | Not started | - |
 | 3. Cache Lifecycle | 0/TBD | Not started | - |
