@@ -98,6 +98,21 @@ def flatten_events(days, src_path=None):
             }
 
 
+def _deduplicate_rows(rows: list[dict]) -> list[dict]:
+    """Deduplicate event rows and return them sorted by (date, time_utc, title).
+
+    Keyed by (id, date, time_utc) when id is truthy; falls back to
+    (date, time_utc, currency, title) for anonymous events.
+    """
+    dedup = {}
+    for r in rows:
+        key = (r["id"], r["date"], r["time_utc"]) if r["id"] else (r["date"], r["time_utc"], r["currency"], r["title"])
+        dedup[key] = r
+    result = list(dedup.values())
+    result.sort(key=lambda x: (x["date"], x["time_utc"], x["title"]))
+    return result
+
+
 def parse_json_to_csv(
     in_dir: str = IN_DIR,
     out_csv: str = PARSED_CSV,
@@ -114,13 +129,7 @@ def parse_json_to_csv(
                 continue
             rows.append(r)
 
-    # De-duplicate
-    dedup = {}
-    for r in rows:
-        key = (r["id"], r["date"], r["time_utc"]) if r["id"] else (r["date"], r["time_utc"], r["currency"], r["title"])
-        dedup[key] = r
-    rows = list(dedup.values())
-    rows.sort(key=lambda x: (x["date"], x["time_utc"], x["title"]))
+    rows = _deduplicate_rows(rows)
 
     os.makedirs(os.path.dirname(out_csv) or ".", exist_ok=True)
     cols = ["date", "time_utc", "currency", "impact", "title", "id", "leaked"]
@@ -199,25 +208,25 @@ def write_parquet(df: pd.DataFrame, parquet_path: str) -> str:
 # MAIN: Run full pipeline or individual steps
 # ─────────────────────────────────────────────────────────────────────────────
 
-def run_pipeline(out_parquet: str = OUT_PARQUET):
+def run_pipeline(
+    out_parquet: str = OUT_PARQUET,
+    *,
+    in_dir: str = IN_DIR,
+    keep_currencies: set = KEEP_CURRENCIES,
+    keep_impacts: set = KEEP_IMPACTS,
+) -> None:
     """Run full pipeline in memory: JSON -> filtered -> sanitized -> Parquet (no intermediate CSVs)."""
     # Parse JSON files
     rows = []
-    for path, days in load_days_files(IN_DIR):
+    for path, days in load_days_files(in_dir):
         for r in flatten_events(days, path):
-            if KEEP_CURRENCIES and r["currency"] not in KEEP_CURRENCIES:
+            if keep_currencies and r["currency"] not in keep_currencies:
                 continue
-            if KEEP_IMPACTS and r["impact"] not in KEEP_IMPACTS:
+            if keep_impacts and r["impact"] not in keep_impacts:
                 continue
             rows.append(r)
 
-    # De-duplicate
-    dedup = {}
-    for r in rows:
-        key = (r["id"], r["date"], r["time_utc"]) if r["id"] else (r["date"], r["time_utc"], r["currency"], r["title"])
-        dedup[key] = r
-    rows = list(dedup.values())
-    rows.sort(key=lambda x: (x["date"], x["time_utc"], x["title"]))
+    rows = _deduplicate_rows(rows)
 
     # Sanitize (remove 'speaks')
     rows = [r for r in rows if should_keep_row(r)]
@@ -274,7 +283,7 @@ Without --step, runs full pipeline directly to Parquet (no intermediate CSVs).
     else:
         # No step specified -> run full pipeline (parquet only, no intermediate CSVs)
         out_parquet = args.out or OUT_PARQUET
-        run_pipeline(out_parquet=out_parquet)
+        run_pipeline(out_parquet=out_parquet, in_dir=args.in_dir)
 
 
 if __name__ == "__main__":
