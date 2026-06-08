@@ -24,11 +24,6 @@ DEFAULT_CURRENCIES = ["USD"]
 DEFAULT_IMPACTS = ["high", "holiday"]
 # ====================
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
 logger = logging.getLogger(__name__)
 
 # DATA-01 columns — used to create an empty DataFrame when no months match.
