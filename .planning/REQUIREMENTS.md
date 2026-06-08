@@ -34,14 +34,14 @@ Requirements for the initial packaged release. Each maps to a roadmap phase.
 ### Data Source
 
 - [ ] **SRC-01**: The FF JSON/POST endpoint (`apply-settings`) is investigated as a spike; if it reliably returns structured data, it replaces the HTML/JS parser as the primary source
-- [ ] **SRC-02**: HTML-scrape-and-parse-embedded-JS is retained as a fallback source
+- [x] **SRC-02**: HTML-scrape-and-parse-embedded-JS is retained as a fallback source
 
 ### Code Quality
 
 - [x] **QUAL-01**: Deduplication logic is extracted into a single shared helper (no copy-paste between parse and full-pipeline paths)
 - [x] **QUAL-02**: The `--in-dir` (input directory) option is honored in all execution paths (no silent no-op)
 - [x] **QUAL-03**: Failed scrapes no longer write empty JSON files that permanently poison the skip logic
-- [ ] **QUAL-04**: Stale hardcoded date defaults are removed in favor of explicit/sensible behavior
+- [x] **QUAL-04**: Stale hardcoded date defaults are removed in favor of explicit/sensible behavior
 - [ ] **QUAL-05**: Fixture-based regression tests cover the `calendarComponentStates` parser against realistic saved HTML
 
 ## v2 Requirements
@@ -90,11 +90,11 @@ Populated during roadmap creation — each requirement maps to exactly one phase
 | DATA-04 | Phase 2 | Pending |
 | DATA-05 | Phase 2 | Pending |
 | SRC-01 | Phase 2 | Pending |
-| SRC-02 | Phase 1 | Pending |
+| SRC-02 | Phase 1 | Complete |
 | QUAL-01 | Phase 1 | Complete |
 | QUAL-02 | Phase 1 | Complete |
 | QUAL-03 | Phase 1 | Complete |
-| QUAL-04 | Phase 1 | Pending |
+| QUAL-04 | Phase 1 | Complete |
 | QUAL-05 | Phase 2 | Pending |
 
 **Coverage:**

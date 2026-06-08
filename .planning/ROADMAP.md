@@ -52,7 +52,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-  - [ ] 01-06-PLAN.md — Refresh network slice + scrape relocation (SRC-02, QUAL-03/04, D-11)
+  - [x] 01-06-PLAN.md — Refresh network slice + scrape relocation (SRC-02, QUAL-03/04, D-11)
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
@@ -95,6 +95,6 @@ Phases execute in numeric order: 1 → 2 → 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Installable Data Provider | 5/7 | In Progress|  |
+| 1. Installable Data Provider | 6/7 | In Progress|  |
 | 2. Full Analytical Schema + Source Spike | 0/TBD | Not started | - |
 | 3. Cache Lifecycle | 0/TBD | Not started | - |
