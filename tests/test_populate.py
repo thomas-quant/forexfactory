@@ -558,5 +558,187 @@ class PopulateNullDatelineTests(unittest.TestCase):
             )
 
 
+class PopulatePhase2SchemaTests(unittest.TestCase):
+    """Phase-2 schema and behavior changes: wide parquet, no speaks-drop, force=, schema_version."""
+
+    def _write_raw(self, raw_dir: Path, year: int, month: int, events: list) -> Path:
+        path = raw_dir / f"days_{year:04d}_{month:02d}.json"
+        path.write_text(json.dumps([{"events": events}]), encoding="utf-8")
+        return path
+
+    def _usd_high_event(self, dateline: int = 1772368200) -> dict:
+        return {
+            "currency": "USD",
+            "impactName": "High Impact Expected",
+            "name": "CPI y/y",
+            "dateline": dateline,
+            "id": 12345,
+            "leaked": False,
+            "forecast": "4.3%",
+            "actual": "4.5%",
+            "previous": "4.1%",
+            "revision": "",
+            "actualBetterWorse": 1,
+            "revisionBetterWorse": 0,
+            "ebaseId": 999,
+            "country": "US",
+            "hasDataValues": True,
+        }
+
+    def _speaks_event(self, dateline: int = 1772368200) -> dict:
+        return {
+            "currency": "USD",
+            "impactName": "High Impact Expected",
+            "name": "Fed Chair Powell Speaks",
+            "dateline": dateline,
+            "id": "powell-1",
+            "leaked": False,
+            "hasDataValues": False,
+            "actualBetterWorse": 0,
+            "revisionBetterWorse": 0,
+        }
+
+    def test_parquet_has_phase2_columns(self):
+        """Built parquet has the wide Phase-2 schema: new analytical columns present."""
+        import pandas as pd
+        from forexfactory import _populate
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            raw_dir = tmp_path / "raw"
+            raw_dir.mkdir()
+            cache_dir = tmp_path / "cache"
+            cache_dir.mkdir()
+
+            self._write_raw(raw_dir, 2026, 3, [self._usd_high_event()])
+            _populate.run_populate(cache_dir=cache_dir, raw_dir=str(raw_dir))
+
+            df = pd.read_parquet(cache_dir / "2026-03.parquet")
+
+            # New analytical fields must be present
+            self.assertIn("forecast_raw", df.columns)
+            self.assertIn("actual_raw", df.columns)
+            self.assertIn("previous_raw", df.columns)
+            self.assertIn("revision_raw", df.columns)
+            self.assertIn("forecast", df.columns)
+            self.assertIn("actual", df.columns)
+            self.assertIn("actualBetterWorse", df.columns)
+            self.assertIn("revisionBetterWorse", df.columns)
+            self.assertIn("ebaseId", df.columns)
+            self.assertIn("country", df.columns)
+            self.assertIn("hasDataValues", df.columns)
+
+            # date and time_utc must be merged, not present as raw columns
+            self.assertNotIn("date", df.columns)
+            self.assertNotIn("time_utc", df.columns)
+
+    def test_phase2_dtypes_correct(self):
+        """Phase-2 parquet dtypes: forecast float64, hasDataValues bool, actualBetterWorse Int64."""
+        import pandas as pd
+        from forexfactory import _populate
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            raw_dir = tmp_path / "raw"
+            raw_dir.mkdir()
+            cache_dir = tmp_path / "cache"
+            cache_dir.mkdir()
+
+            self._write_raw(raw_dir, 2026, 3, [self._usd_high_event()])
+            _populate.run_populate(cache_dir=cache_dir, raw_dir=str(raw_dir))
+
+            df = pd.read_parquet(cache_dir / "2026-03.parquet")
+
+            self.assertEqual(str(df["forecast"].dtype), "float64",
+                             "forecast column must be float64")
+            self.assertEqual(str(df["hasDataValues"].dtype), "bool",
+                             "hasDataValues column must be bool")
+            self.assertEqual(str(df["actualBetterWorse"].dtype), "Int64",
+                             "actualBetterWorse must be nullable Int64")
+            self.assertEqual(str(df["ebaseId"].dtype), "Int64",
+                             "ebaseId must be nullable Int64")
+            self.assertEqual(str(df["id"].dtype), "Int64",
+                             "id must be nullable Int64")
+
+    def test_speaks_event_retained_in_parquet(self):
+        """D-09: A speech event (hasDataValues=False) is RETAINED — no longer dropped."""
+        import pandas as pd
+        from forexfactory import _populate
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            raw_dir = tmp_path / "raw"
+            raw_dir.mkdir()
+            cache_dir = tmp_path / "cache"
+            cache_dir.mkdir()
+
+            self._write_raw(raw_dir, 2026, 3, [self._speaks_event()])
+            _populate.run_populate(cache_dir=cache_dir, raw_dir=str(raw_dir))
+
+            df = pd.read_parquet(cache_dir / "2026-03.parquet")
+            self.assertGreater(len(df), 0, "speaks event must be retained in parquet (D-09)")
+            speaks_rows = df[df["hasDataValues"] == False]
+            self.assertEqual(len(speaks_rows), 1, "speaks event row must be present")
+
+    def test_force_true_overwrites_cached_month(self):
+        """force=True re-populates a month the manifest already marks as cached."""
+        from forexfactory import _populate
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            raw_dir = tmp_path / "raw"
+            raw_dir.mkdir()
+            cache_dir = tmp_path / "cache"
+            cache_dir.mkdir()
+
+            self._write_raw(raw_dir, 2026, 3, [self._usd_high_event()])
+
+            # First populate — month is cached
+            result1 = _populate.run_populate(cache_dir=cache_dir, raw_dir=str(raw_dir))
+            self.assertEqual(result1["populated"], 1)
+
+            # Second populate without force — should skip
+            result2 = _populate.run_populate(cache_dir=cache_dir, raw_dir=str(raw_dir))
+            self.assertEqual(result2["skipped"], 1)
+            self.assertEqual(result2["populated"], 0)
+
+            # Third populate with force=True — must re-populate, not skip
+            result3 = _populate.run_populate(
+                cache_dir=cache_dir, raw_dir=str(raw_dir), force=True
+            )
+            self.assertEqual(result3["populated"], 1)
+            self.assertEqual(result3["skipped"], 0)
+
+    def test_schema_version_in_manifest_after_populate(self):
+        """After run_populate, manifest has schema_version == '2' (Open Question 3 resolution)."""
+        from forexfactory import _populate, _cache
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            raw_dir = tmp_path / "raw"
+            raw_dir.mkdir()
+            cache_dir = tmp_path / "cache"
+            cache_dir.mkdir()
+
+            self._write_raw(raw_dir, 2026, 3, [self._usd_high_event()])
+            _populate.run_populate(cache_dir=cache_dir, raw_dir=str(raw_dir))
+
+            manifest = _cache.read_manifest(cache_dir)
+            self.assertEqual(manifest.get("schema_version"), "2",
+                             "manifest must have schema_version == '2' after populate")
+
+    def test_schema_version_constant_in_cache_module(self):
+        """_cache.SCHEMA_VERSION == '2'."""
+        from forexfactory import _cache
+        self.assertEqual(_cache.SCHEMA_VERSION, "2")
+
+    def test_force_signature_in_run_populate(self):
+        """run_populate() has a 'force' keyword-only parameter."""
+        import inspect
+        from forexfactory import _populate
+        params = inspect.signature(_populate.run_populate).parameters
+        self.assertIn("force", params, "run_populate must have a 'force' kwarg")
+
+
 if __name__ == "__main__":
     unittest.main()
