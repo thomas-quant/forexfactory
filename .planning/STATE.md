@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-last_updated: "2026-06-08T20:32:35.438Z"
+status: verifying
+last_updated: "2026-06-08T20:48:18.836Z"
 last_activity: 2026-06-08
 progress:
   total_phases: 3
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 12
-  completed_plans: 11
-  percent: 33
+  completed_plans: 12
+  percent: 67
 ---
 
 # Project State
@@ -20,16 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-08)
 
 **Core value:** Fetch the Forex Factory calendar once and reuse it everywhere from a shared local cache, with the data fidelity needed for expected-vs-surprise analysis.
-**Current focus:** Phase 02 — full-analytical-schema-source-spike
+**Current focus:** Phase 02 — full-analytical-schema-source-spike (COMPLETE; Phase 03 next)
 
 ## Current Position
 
 Phase: 02 (full-analytical-schema-source-spike) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-06-08
 
-Progress: [█████████░] 92%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -62,6 +62,7 @@ Progress: [█████████░] 92%
 | Phase 02-full-analytical-schema-source-spike P03 | 2min | 2 tasks | 5 files |
 | Phase 02 P04 | 25 | 3 tasks | 3 files |
 | Phase 02 P02 | 5min | 2 tasks | 5 files |
+| Phase 02-full-analytical-schema-source-spike P05 | 10min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -80,6 +81,8 @@ Recent decisions affecting current work:
 - [Phase ?]: SRC-01 NOT ADOPTED (SC5): apply-settings is settings-save only; /calendar/more clears all 4 D-06 criteria but is append-paginated; HTML ?month= GET stays bulk primary; /calendar/graph filed as SRC-GRAPH-01 future enhancement
 - [Phase ?]: 02-02-SUMMARY.md
 - [Phase ?]: 02-02-SUMMARY.md
+- D-03 exit fulfilled (02-05): out/days_*.json (195 files) deleted and ~/.cache/forexfactory/raw/ removed after SC1/SC2 spot-verification of rebuilt schema_version-2 parquets; approved by user at blocking checkpoint
+- out/ doc framing (02-05): README project-structure chart updated to "optional raw-staging dir (populated on re-scrape)"; stale days_YYYY_MM.json assertion removed from test_docs.py
 
 ### Pending Todos
 
@@ -101,6 +104,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-06-08T20:32:35.404Z
-Stopped at: Completed 02-04-PLAN.md (SRC-01 spike + documented decision SC5)
+Last session: 2026-06-08T20:48:18.803Z
+Stopped at: Completed 02-05-PLAN.md (raw JSON drop + doc-regression update; Phase 2 complete)
 Resume file: None
