@@ -144,6 +144,35 @@ class CacheTests(unittest.TestCase):
     def test_scope_covers_false_empty_scope(self):
         self.assertFalse(_cache._scope_covers({}, ["USD"], ["high"]))
 
+    def test_update_manifest_month_union_merges_scope_across_two_calls(self):
+        """WR-01: two update_manifest_month calls with different scopes union-merge, not overwrite."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir)
+            # First call: USD / high
+            _cache.update_manifest_month(
+                cache_dir,
+                date(2024, 1, 1),
+                scraped_at="2026-06-08T10:00:00Z",
+                settled=True,
+                currencies=["USD"],
+                impacts=["high"],
+            )
+            # Second call: EUR / medium (different currencies and impacts)
+            result = _cache.update_manifest_month(
+                cache_dir,
+                date(2024, 2, 1),
+                scraped_at="2026-06-08T10:05:00Z",
+                settled=True,
+                currencies=["EUR"],
+                impacts=["medium"],
+            )
+        # Both currencies and both impacts must be present after the second call.
+        self.assertEqual(result["scope"]["currencies"], ["EUR", "USD"])
+        self.assertEqual(result["scope"]["impacts"], ["high", "medium"])
+        # Both month entries must exist.
+        self.assertIn("2024-01", result["months"])
+        self.assertIn("2024-02", result["months"])
+
 
 if __name__ == "__main__":
     unittest.main()

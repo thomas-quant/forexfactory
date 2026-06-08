@@ -141,13 +141,22 @@ def update_manifest_month(
 ) -> dict:
     """Read manifest, record scope + per-month provenance, write back, return manifest.
 
-    Sets manifest["scope"] to the union/last-write of populated scope (sorted lists)
-    and records manifest["months"][YYYY-MM] = {"scraped_at": ..., "settled": ...}.
+    Union-merges currencies/impacts into the existing scope (sorted set union) so
+    that a second batch at a different scope doesn't erase the first batch's
+    coverage.  Records manifest["months"][YYYY-MM] = {"scraped_at": ..., "settled": ...}.
     """
     manifest = read_manifest(cache_dir)
+    # WR-01: union-merge so multiple populate batches accumulate coverage.
+    existing_scope = manifest.get("scope", {})
+    merged_currencies = sorted(
+        set(existing_scope.get("currencies", [])) | set(currencies)
+    )
+    merged_impacts = sorted(
+        set(existing_scope.get("impacts", [])) | set(impacts)
+    )
     manifest["scope"] = {
-        "currencies": sorted(currencies),
-        "impacts": sorted(impacts),
+        "currencies": merged_currencies,
+        "impacts": merged_impacts,
     }
     manifest.setdefault("months", {})[f"{anchor:%Y-%m}"] = {
         "scraped_at": scraped_at,
