@@ -26,9 +26,6 @@ DEFAULT_IMPACTS = ["high", "holiday"]
 
 logger = logging.getLogger(__name__)
 
-# DATA-01 columns — used to create an empty DataFrame when no months match.
-_DATA01_COLUMNS = ["datetime_utc", "currency", "impact", "title", "id", "leaked"]
-
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -113,6 +110,7 @@ def run_query(
     impacts: list | None = None,
     start: str | None = None,
     end: str | None = None,
+    include_no_data: bool = False,
     cache_dir: Path | None = None,
 ) -> Path:
     """Read per-month cache parquets, filter, write and return a consolidated result parquet.
@@ -168,11 +166,21 @@ def run_query(
 
         dfs.append(pd.read_parquet(p))
 
-    # Concatenate (or produce an empty DATA-01 DataFrame when nothing matched).
+    # Concatenate (or produce an empty Phase-2 DataFrame when nothing matched).
     if dfs:
         df = pd.concat(dfs, ignore_index=True)
     else:
-        df = pd.DataFrame(columns=_DATA01_COLUMNS)
+        df = pd.DataFrame(columns=_pipeline.PHASE2_COLUMNS)
+
+    # D-08: default filter hides no-data events (speeches) but keeps holidays.
+    # Guard handles pre-Phase-2 parquets that lack the hasDataValues column (RESEARCH Pitfall 4).
+    if not include_no_data:
+        if "hasDataValues" in df.columns:
+            df = df[df["hasDataValues"] | (df["impact"] == "holiday")]
+        else:
+            logger.warning(
+                "[query] hasDataValues column absent — stale cache; run populate --force"
+            )
 
     # Apply currency + impact filter.
     df = df[df["currency"].isin(currencies) & df["impact"].isin(impacts)]
