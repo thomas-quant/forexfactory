@@ -25,6 +25,9 @@ from forexfactory import _cache, _pipeline
 RAW_INPUT_DIR: str = "out"                    # legacy on-disk asset location (D-05 / SC2)
 DEFAULT_CURRENCIES: list[str] = ["USD"]       # D-04
 DEFAULT_IMPACTS: list[str] = ["high", "holiday"]  # D-04
+# Nullable-int columns: cast after DataFrame construction to guarantee Int64 parquet
+# dtype even when some rows have None (T-02-02 / RESEARCH Pattern 4).
+INT_NULLABLE_COLS: list[str] = ["id", "ebaseId", "actualBetterWorse", "revisionBetterWorse"]
 # ====================
 
 logger = logging.getLogger(__name__)
@@ -44,8 +47,10 @@ def build_month_parquet(
 ) -> int:
     """Build a per-month parquet from raw days list, write to cache, return row count.
 
-    Reuses _pipeline.flatten_events, _deduplicate_rows, should_keep_row, and
-    write_parquet so the ETL logic stays in one place (QUAL-01 reuse).
+    Reuses _pipeline.flatten_events, _deduplicate_rows, and write_parquet so the
+    ETL logic stays in one place (QUAL-01 reuse). Speech events are retained in cache
+    and filtered at query time per D-09 — the populate path does NOT apply the
+    legacy 'speaks' drop (that filter lives only in the _pipeline.run_pipeline() legacy path).
     """
     # Flatten + filter
     rows = []
@@ -59,12 +64,11 @@ def build_month_parquet(
     # Deduplicate (QUAL-01)
     rows = _pipeline._deduplicate_rows(rows)
 
-    # Drop 'speaks' events
-    rows = [r for r in rows if _pipeline.should_keep_row(r)]
+    # Speech-event filter intentionally absent — retained per D-09; query layer filters.
 
-    # Build DataFrame with datetime_utc column (DATA-01)
+    # Build DataFrame with datetime_utc column (DATA-01 / Phase-2 wide schema)
     df = pd.DataFrame(rows) if rows else pd.DataFrame(
-        columns=["datetime_utc", "currency", "impact", "title", "id", "leaked"]
+        columns=_pipeline.PHASE2_COLUMNS
     )
     if rows and "date" in df.columns and "time_utc" in df.columns:
         # WR-02: use errors="coerce" so holiday-class events with null/empty
@@ -80,6 +84,16 @@ def build_month_parquet(
             )
         df = df.drop(columns=["date", "time_utc"])
         df = df[["datetime_utc"] + [c for c in df.columns if c != "datetime_utc"]]
+
+    # Enforce nullable-int dtype for integer columns that may have None values.
+    # Int64 (capital I) is the pandas nullable extension type; it round-trips
+    # through pyarrow as int64 with nullability (T-02-02 / RESEARCH Pattern 4).
+    # pd.to_numeric(errors='coerce') runs first to handle any non-numeric values
+    # (e.g. string IDs from legacy fixture data) gracefully — they become <NA>
+    # instead of raising ValueError (RESEARCH "fallback dtype normalizer").
+    for col in INT_NULLABLE_COLS:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce").astype("Int64")
 
     parquet_path = _cache.month_parquet_path(cache_dir, anchor)
     _pipeline.write_parquet(df, str(parquet_path))
@@ -100,6 +114,7 @@ def run_populate(
     end: str | None = None,
     raw_dir: str = RAW_INPUT_DIR,
     cache_dir: Path | None = None,
+    force: bool = False,
 ) -> dict:
     """Populate the cache from on-disk raw JSON files. Makes zero network calls.
 
@@ -110,6 +125,9 @@ def run_populate(
         end: Last month to process as "YYYY-MM" (default: all on disk — D-05).
         raw_dir: Directory containing days_YYYY_MM.json files (default: "out").
         cache_dir: Cache root directory. Resolved via _cache.resolve_cache_dir.
+        force: When True, rebuild every month unconditionally, bypassing the
+               manifest skip-check. Used for Phase-2 schema migration (RESEARCH
+               Pattern 6). CLI --force flag is in plan 02-02 (cli.py ownership).
 
     Returns:
         dict with keys: populated (int), skipped (int), empty (int).
@@ -188,12 +206,13 @@ def run_populate(
             continue
 
         # D-06 incremental skip-check: skip only if manifest shows this month
-        # already cached at a covering scope.
-        cached_entry = manifest.get("months", {}).get(month_key)
-        if cached_entry and _cache._scope_covers(original_scope, currencies, impacts):
-            logger.info("[%d/%d] Skip (cached at scope): %s", i, total, month_key)
-            skipped_count += 1
-            continue
+        # already cached at a covering scope — bypassed entirely when force=True.
+        if not force:
+            cached_entry = manifest.get("months", {}).get(month_key)
+            if cached_entry and _cache._scope_covers(original_scope, currencies, impacts):
+                logger.info("[%d/%d] Skip (cached at scope): %s", i, total, month_key)
+                skipped_count += 1
+                continue
 
         # Build per-month parquet
         logger.info("[%d/%d] Populating: %s", i, total, month_key)
@@ -222,6 +241,14 @@ def run_populate(
         "[populate] done — populated=%d skipped=%d empty=%d",
         populated_count, skipped_count, empty_count,
     )
+
+    # Stamp schema_version after any successful activity so callers can detect
+    # Phase-2 cache without inspecting parquet dtypes (Open Question 3 / RESEARCH Pattern 6).
+    if populated_count or skipped_count:
+        current_manifest = _cache.read_manifest(resolved_cache)
+        current_manifest["schema_version"] = _cache.SCHEMA_VERSION
+        _cache.write_manifest(resolved_cache, current_manifest)
+
     return {"populated": populated_count, "skipped": skipped_count, "empty": empty_count}
 
 
