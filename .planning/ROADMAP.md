@@ -77,7 +77,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Wave 1**
 
   - [x] 02-01-PLAN.md — Schema core: _parse_value + widened flatten_events + force rebuild (DATA-02/03/04)
-  - [ ] 02-03-PLAN.md — QUAL-05 parser fixtures + ExtractDaysFixtureTests
+  - [x] 02-03-PLAN.md — QUAL-05 parser fixtures + ExtractDaysFixtureTests
   - [ ] 02-04-PLAN.md — SRC-01 apply-settings spike + documented decision (SRC-01)
 
 **Wave 2** *(blocked on Wave 1 completion)*
@@ -110,5 +110,5 @@ Phases execute in numeric order: 1 → 2 → 3
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Installable Data Provider | 7/7 | Complete    | 2026-06-08 |
-| 2. Full Analytical Schema + Source Spike | 1/5 | In Progress|  |
+| 2. Full Analytical Schema + Source Spike | 2/5 | In Progress|  |
 | 3. Cache Lifecycle | 0/TBD | Not started | - |

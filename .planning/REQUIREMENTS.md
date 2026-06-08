@@ -42,7 +42,7 @@ Requirements for the initial packaged release. Each maps to a roadmap phase.
 - [x] **QUAL-02**: The `--in-dir` (input directory) option is honored in all execution paths (no silent no-op)
 - [x] **QUAL-03**: Failed scrapes no longer write empty JSON files that permanently poison the skip logic
 - [x] **QUAL-04**: Stale hardcoded date defaults are removed in favor of explicit/sensible behavior
-- [ ] **QUAL-05**: Fixture-based regression tests cover the `calendarComponentStates` parser against realistic saved HTML
+- [x] **QUAL-05**: Fixture-based regression tests cover the `calendarComponentStates` parser against realistic saved HTML
 
 ## v2 Requirements
 
@@ -95,7 +95,7 @@ Populated during roadmap creation — each requirement maps to exactly one phase
 | QUAL-02 | Phase 1 | Complete |
 | QUAL-03 | Phase 1 | Complete |
 | QUAL-04 | Phase 1 | Complete |
-| QUAL-05 | Phase 2 | Pending |
+| QUAL-05 | Phase 2 | Complete |
 
 **Coverage:**
 - v1 requirements: 22 total
