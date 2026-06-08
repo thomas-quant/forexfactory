@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-06-08T19:10:36.998Z"
+last_updated: "2026-06-08T20:24:28.167Z"
 last_activity: 2026-06-08
 progress:
   total_phases: 3
   completed_phases: 1
   total_plans: 12
-  completed_plans: 9
+  completed_plans: 10
   percent: 33
 ---
 
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-06-08)
 ## Current Position
 
 Phase: 02 (full-analytical-schema-source-spike) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
 Last activity: 2026-06-08
 
-Progress: [████████░░] 75%
+Progress: [████████░░] 83%
 
 ## Performance Metrics
 
@@ -60,6 +60,7 @@ Progress: [████████░░] 75%
 | Phase 01-installable-data-provider P07 | 5min | 2 tasks | 3 files |
 | Phase 02 P01 | 7min | 2 tasks | 5 files |
 | Phase 02-full-analytical-schema-source-spike P03 | 2min | 2 tasks | 5 files |
+| Phase 02 P04 | 25 | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -75,6 +76,7 @@ Recent decisions affecting current work:
 - [Phase ?]: QUAL-03 guard in _scrape and _refresh — empty scrape writes no JSON file
 - [Phase ?]: D-11: polite 1.0s delay defaults; gap-fill range in _refresh — was 0.0 in scrape.py; gap-fill avoids re-scraping settled months
 - [Phase ?]: SRC-02: _refresh reuses _scrape.scrape_month (no parser rewrite) — calendarComponentStates parser is fragile; reuse preserves working behavior
+- [Phase ?]: SRC-01 NOT ADOPTED (SC5): apply-settings is settings-save only; /calendar/more clears all 4 D-06 criteria but is append-paginated; HTML ?month= GET stays bulk primary; /calendar/graph filed as SRC-GRAPH-01 future enhancement
 
 ### Pending Todos
 
@@ -96,6 +98,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-06-08T19:10:36.968Z
-Stopped at: Phase 2 context gathered
+Last session: 2026-06-08T20:24:28.132Z
+Stopped at: Completed 02-04-PLAN.md (SRC-01 spike + documented decision SC5)
 Resume file: None

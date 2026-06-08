@@ -33,7 +33,7 @@ Requirements for the initial packaged release. Each maps to a roadmap phase.
 
 ### Data Source
 
-- [ ] **SRC-01**: The FF JSON/POST endpoint (`apply-settings`) is investigated as a spike; if it reliably returns structured data, it replaces the HTML/JS parser as the primary source
+- [x] **SRC-01**: The FF JSON/POST endpoint (`apply-settings`) is investigated as a spike; if it reliably returns structured data, it replaces the HTML/JS parser as the primary source
 - [x] **SRC-02**: HTML-scrape-and-parse-embedded-JS is retained as a fallback source
 
 ### Code Quality
@@ -89,7 +89,7 @@ Populated during roadmap creation — each requirement maps to exactly one phase
 | DATA-03 | Phase 2 | Complete |
 | DATA-04 | Phase 2 | Complete |
 | DATA-05 | Phase 2 | Pending |
-| SRC-01 | Phase 2 | Pending |
+| SRC-01 | Phase 2 | Complete |
 | SRC-02 | Phase 1 | Complete |
 | QUAL-01 | Phase 1 | Complete |
 | QUAL-02 | Phase 1 | Complete |
