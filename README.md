@@ -38,6 +38,12 @@ Override the cache directory (default: `~/.cache/forexfactory/`):
 forexfactory populate --cache-dir /path/to/cache
 ```
 
+Force-rebuild every month unconditionally (bypasses the manifest skip-check — use after a schema migration):
+
+```bash
+forexfactory populate --force --raw-dir out
+```
+
 ### 3. Query the Cache
 
 ```bash
@@ -49,6 +55,12 @@ forexfactory query --currency USD --impact high
 ```bash
 PARQUET=$(forexfactory query --currency USD --impact high)
 python -c "import pandas as pd; print(pd.read_parquet('$PARQUET').head())"
+```
+
+By default `query` returns **data-bearing events** (with `forecast`/`actual` fields) and **bank holidays**. To include speeches and other no-data events:
+
+```bash
+forexfactory query --currency USD --impact high --include-no-data
 ```
 
 If the requested currency/impact combination has not been populated, `query` exits non-zero and prints actionable guidance to stderr (run `forexfactory populate --currency ... --impact ...` first).
@@ -77,7 +89,9 @@ df = pd.read_parquet(path)
 
 ## Output Schema
 
-The cache stores data as parquet with the following DATA-01 core columns:
+The cache stores data as parquet with the following columns (schema_version 2):
+
+**Core fields (DATA-01)**
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -85,8 +99,38 @@ The cache stores data as parquet with the following DATA-01 core columns:
 | `currency` | string | Currency code (e.g. USD) |
 | `impact` | string | Impact level (high, holiday, medium, low) |
 | `title` | string | Event name |
-| `id` | string | Forex Factory event ID |
+| `id` | Int64 | Forex Factory event ID (nullable) |
 | `leaked` | boolean | Whether Forex Factory marked the event as leaked |
+
+**Raw value strings (verbatim from FF)**
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `forecast_raw` | string | Raw forecast value string (e.g. `"4.3%"`, `"202K"`, `""`) |
+| `actual_raw` | string | Raw actual value string |
+| `previous_raw` | string | Raw previous value string |
+| `revision_raw` | string | Raw revision value string |
+
+**Parsed numerics**
+
+Magnitude suffixes expanded (K=×1e3, M=×1e6, B=×1e9, T=×1e12). Percent divided by 100 (`"4.3%"` → 0.043). Unparseable or empty strings become null (NaN).
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `forecast` | float64 | Parsed forecast numeric (null if unparseable) |
+| `actual` | float64 | Parsed actual numeric |
+| `previous` | float64 | Parsed previous numeric |
+| `revision` | float64 | Parsed revision numeric |
+
+**Surprise flags and identity**
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `actualBetterWorse` | Int64 | FF surprise flag: 1=better, 2=worse, 0=neutral/n/a (nullable) |
+| `revisionBetterWorse` | Int64 | FF revision flag: 1=better, 2=worse, 0=neutral/n/a (nullable) |
+| `ebaseId` | Int64 | FF metric series identifier (nullable) |
+| `country` | string | Country code (e.g. US, UK, JN, EZ) |
+| `hasDataValues` | boolean | True for data releases with forecast/actual/previous; False for speeches and holidays |
 
 ## Cache Layout
 
