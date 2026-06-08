@@ -5,7 +5,7 @@ from datetime import date
 from pathlib import Path
 from unittest.mock import patch
 
-import scrape as scraper
+import forexfactory._scrape as scraper
 
 
 class FakeResponse:
@@ -106,12 +106,12 @@ class ScrapeTests(unittest.TestCase):
         self.assertEqual(session.calls[1][1]["impersonate"], scraper.IMPERSONATE)
         self.assertEqual(session.calls[1][1]["timeout"], scraper.REQUEST_TIMEOUT)
 
-
-    def test_parse_args_defaults_between_pages_delay_to_zero(self):
+    def test_parse_args_defaults_between_pages_delay_to_one(self):
+        """D-11: default delays are 1.0 (polite non-zero), not 0.0."""
         args = scraper.parse_args([])
 
-        self.assertEqual(args.between_pages_delay, 0.0)
-        self.assertEqual(args.retry_delay, 0.0)
+        self.assertEqual(args.between_pages_delay, 1.0)
+        self.assertEqual(args.retry_delay, 1.0)
 
     def test_main_passes_cli_delays_to_run_scraper(self):
         captured = {}
@@ -121,8 +121,8 @@ class ScrapeTests(unittest.TestCase):
             *,
             out_dir,
             session=None,
-            between_pages_delay=0.0,
-            retry_delay=0.0,
+            between_pages_delay=1.0,
+            retry_delay=1.0,
         ):
             captured["pages"] = pages
             captured["out_dir"] = out_dir
@@ -177,6 +177,21 @@ class ScrapeTests(unittest.TestCase):
             saved = json.loads((out_dir / "days_2026_02.json").read_text(encoding="utf-8"))
             self.assertEqual(saved, days)
             self.assertEqual([call[0] for call in session.calls], ["https://example.test/feb"])
+
+    def test_run_scraper_does_not_write_file_on_empty_scrape(self):
+        """QUAL-03: when scrape_month returns [], no file is written and fail_count == 1."""
+        pages = [scraper.MonthPage(date(2026, 5, 1), "https://example.test/may")]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_dir = Path(tmpdir)
+
+            with patch.object(scraper, "scrape_month", return_value=[]):
+                result = scraper.run_scraper(pages, out_dir=str(out_dir), session=object())
+
+            self.assertEqual(result.fail_count, 1)
+            self.assertEqual(result.success_count, 0)
+            self.assertFalse((out_dir / "days_2026_05.json").exists(),
+                             "no raw file must be written when scrape returns empty days")
 
 
 if __name__ == "__main__":
