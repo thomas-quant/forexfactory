@@ -35,7 +35,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 **Wave 1**
 
-  - [ ] 01-01-PLAN.md — Installable package scaffold + reused pipeline engine (QUAL-01/02)
+  - [x] 01-01-PLAN.md — Installable package scaffold + reused pipeline engine (QUAL-01/02)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -95,6 +95,6 @@ Phases execute in numeric order: 1 → 2 → 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Installable Data Provider | 0/7 | Not started | - |
+| 1. Installable Data Provider | 1/7 | In Progress|  |
 | 2. Full Analytical Schema + Source Spike | 0/TBD | Not started | - |
 | 3. Cache Lifecycle | 0/TBD | Not started | - |

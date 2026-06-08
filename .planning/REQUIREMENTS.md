@@ -9,10 +9,10 @@ Requirements for the initial packaged release. Each maps to a roadmap phase.
 
 ### Packaging & Distribution
 
-- [ ] **PKG-01**: Project is a pip-installable package (src layout, `pyproject.toml`, importable as `forexfactory`)
+- [x] **PKG-01**: Project is a pip-installable package (src layout, `pyproject.toml`, importable as `forexfactory`)
 - [ ] **PKG-02**: A unified CLI entry point exposes populate, refresh, and query commands
-- [ ] **PKG-03**: A programmatic library API exposes a main call that returns a path to a parquet file
-- [ ] **PKG-04**: Existing scrape/pipeline logic is reused (not rewritten) and the ~195 cached months are re-processed into the new schema without re-scraping
+- [x] **PKG-03**: A programmatic library API exposes a main call that returns a path to a parquet file
+- [x] **PKG-04**: Existing scrape/pipeline logic is reused (not rewritten) and the ~195 cached months are re-processed into the new schema without re-scraping
 
 ### Cache
 
@@ -25,7 +25,7 @@ Requirements for the initial packaged release. Each maps to a roadmap phase.
 
 ### Data Schema
 
-- [ ] **DATA-01**: Each event record carries the core fields: `datetime_utc`, `currency`, `impact`, `title`, `id`, `leaked`
+- [x] **DATA-01**: Each event record carries the core fields: `datetime_utc`, `currency`, `impact`, `title`, `id`, `leaked`
 - [ ] **DATA-02**: Each event carries data values `forecast`, `actual`, `previous`, `revision`, `hasDataValues`, stored as both raw strings and parsed numeric
 - [ ] **DATA-03**: Each event carries surprise/identity fields `actualBetterWorse`, `revisionBetterWorse`, `ebaseId`, `country`
 - [ ] **DATA-04**: FF UI/internal fields (`checker`, `releaser`, `siteId`, `show*`/`enable*`, `notice`, naming duplicates) are dropped
@@ -38,8 +38,8 @@ Requirements for the initial packaged release. Each maps to a roadmap phase.
 
 ### Code Quality
 
-- [ ] **QUAL-01**: Deduplication logic is extracted into a single shared helper (no copy-paste between parse and full-pipeline paths)
-- [ ] **QUAL-02**: The `--in-dir` (input directory) option is honored in all execution paths (no silent no-op)
+- [x] **QUAL-01**: Deduplication logic is extracted into a single shared helper (no copy-paste between parse and full-pipeline paths)
+- [x] **QUAL-02**: The `--in-dir` (input directory) option is honored in all execution paths (no silent no-op)
 - [ ] **QUAL-03**: Failed scrapes no longer write empty JSON files that permanently poison the skip logic
 - [ ] **QUAL-04**: Stale hardcoded date defaults are removed in favor of explicit/sensible behavior
 - [ ] **QUAL-05**: Fixture-based regression tests cover the `calendarComponentStates` parser against realistic saved HTML
@@ -74,25 +74,25 @@ Populated during roadmap creation — each requirement maps to exactly one phase
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PKG-01 | Phase 1 | Pending |
+| PKG-01 | Phase 1 | Complete |
 | PKG-02 | Phase 1 | Pending |
-| PKG-03 | Phase 1 | Pending |
-| PKG-04 | Phase 1 | Pending |
+| PKG-03 | Phase 1 | Complete |
+| PKG-04 | Phase 1 | Complete |
 | CACHE-01 | Phase 1 | Pending |
 | CACHE-02 | Phase 1 | Pending |
 | CACHE-03 | Phase 3 | Pending |
 | CACHE-04 | Phase 1 | Pending |
 | CACHE-05 | Phase 3 | Pending |
 | CACHE-06 | Phase 3 | Pending |
-| DATA-01 | Phase 1 | Pending |
+| DATA-01 | Phase 1 | Complete |
 | DATA-02 | Phase 2 | Pending |
 | DATA-03 | Phase 2 | Pending |
 | DATA-04 | Phase 2 | Pending |
 | DATA-05 | Phase 2 | Pending |
 | SRC-01 | Phase 2 | Pending |
 | SRC-02 | Phase 1 | Pending |
-| QUAL-01 | Phase 1 | Pending |
-| QUAL-02 | Phase 1 | Pending |
+| QUAL-01 | Phase 1 | Complete |
+| QUAL-02 | Phase 1 | Complete |
 | QUAL-03 | Phase 1 | Pending |
 | QUAL-04 | Phase 1 | Pending |
 | QUAL-05 | Phase 2 | Pending |
