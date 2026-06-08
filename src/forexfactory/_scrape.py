@@ -366,7 +366,9 @@ def run_scraper(
     for i, page in enumerate(pages, 1):
         out_path = os.path.join(out_dir, f"days_{page.anchor.strftime('%Y_%m')}.json")
 
-        if os.path.isfile(out_path):
+        # WR-03: also require file size > 0 so a pre-existing 0-byte file does
+        # not permanently suppress re-scraping this month.
+        if os.path.isfile(out_path) and os.path.getsize(out_path) > 0:
             logger.info("[%s/%s] Skip (exists): %s", i, len(pages), page.anchor.strftime("%Y-%m"))
             skip_count += 1
             continue
