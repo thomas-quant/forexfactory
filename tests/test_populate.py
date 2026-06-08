@@ -472,5 +472,91 @@ class PopulateIncrementalTests(unittest.TestCase):
                 )
 
 
+class PopulateNullDatelineTests(unittest.TestCase):
+    """WR-02 regression: holiday-class events with null datelines must not crash populate."""
+
+    def test_null_dateline_holiday_event_does_not_crash(self):
+        """WR-02: a holiday event with dateline=None becomes NaT instead of raising ParserError."""
+        import pandas as pd
+        from forexfactory import _populate
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            raw_dir = tmp_path / "raw"
+            raw_dir.mkdir()
+            cache_dir = tmp_path / "cache"
+            cache_dir.mkdir()
+
+            # Holiday event with no dateline — to_iso returns ("", "") for these.
+            holiday_event = {
+                "currency": "USD",
+                "impactName": "Holiday",
+                "name": "Bank Holiday",
+                "dateline": None,
+                "id": "holiday-1",
+                "leaked": False,
+            }
+            (raw_dir / "days_2026_03.json").write_text(
+                json.dumps([{"events": [holiday_event]}]), encoding="utf-8"
+            )
+
+            # Must not raise; previously pd.to_datetime(" ", utc=True) raised ParserError.
+            result = _populate.run_populate(
+                cache_dir=cache_dir,
+                raw_dir=str(raw_dir),
+                currencies=["USD"],
+                impacts=["holiday"],
+            )
+            self.assertEqual(result["populated"], 1)
+
+            df = pd.read_parquet(cache_dir / "2026-03.parquet")
+            self.assertEqual(len(df), 1, "holiday row should be in the parquet")
+            # The datetime_utc column must exist and the row's value must be NaT.
+            self.assertIn("datetime_utc", df.columns)
+            self.assertTrue(
+                pd.isna(df["datetime_utc"].iloc[0]),
+                "null-dateline row must have NaT in datetime_utc",
+            )
+
+    def test_zero_dateline_holiday_event_does_not_crash(self):
+        """WR-02: a holiday event with dateline=0 (falsy) becomes NaT instead of crashing."""
+        import pandas as pd
+        from forexfactory import _populate
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            raw_dir = tmp_path / "raw"
+            raw_dir.mkdir()
+            cache_dir = tmp_path / "cache"
+            cache_dir.mkdir()
+
+            holiday_event = {
+                "currency": "USD",
+                "impactName": "Holiday",
+                "name": "New Year",
+                "dateline": 0,
+                "id": "ny-1",
+                "leaked": False,
+            }
+            (raw_dir / "days_2026_01.json").write_text(
+                json.dumps([{"events": [holiday_event]}]), encoding="utf-8"
+            )
+
+            result = _populate.run_populate(
+                cache_dir=cache_dir,
+                raw_dir=str(raw_dir),
+                currencies=["USD"],
+                impacts=["holiday"],
+            )
+            self.assertEqual(result["populated"], 1)
+
+            df = pd.read_parquet(cache_dir / "2026-01.parquet")
+            self.assertEqual(len(df), 1)
+            self.assertTrue(
+                pd.isna(df["datetime_utc"].iloc[0]),
+                "zero-dateline row must have NaT in datetime_utc",
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
