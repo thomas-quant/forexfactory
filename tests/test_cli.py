@@ -28,6 +28,7 @@ _FIXTURE_DAYS = [
                 "dateline": 1772323200,
                 "id": "nfp-1",
                 "leaked": False,
+                "hasDataValues": True,
             }
         ]
     }
@@ -117,7 +118,7 @@ class CliRoutingTests(unittest.TestCase):
         """D-12: --currency USD --currency EUR yields currencies == ["USD", "EUR"]."""
         captured = {}
 
-        def fake_run_query(*, currencies, impacts, start, end, cache_dir):
+        def fake_run_query(*, currencies, impacts, start, end, include_no_data, cache_dir):
             captured["currencies"] = currencies
             captured["impacts"] = impacts
             return pathlib.Path("/tmp/fake.parquet")  # cli.main just prints it
@@ -138,7 +139,10 @@ class CliRoutingTests(unittest.TestCase):
         """D-10: query subcommand writes exactly the parquet path to stdout, nothing else."""
         fake_path = pathlib.Path("/tmp/fake_result.parquet")
 
-        with patch.object(cli._query, "run_query", return_value=fake_path):
+        def fake_run_query(*, currencies, impacts, start, end, include_no_data, cache_dir):
+            return fake_path
+
+        with patch.object(cli._query, "run_query", side_effect=fake_run_query):
             buf = io.StringIO()
             with contextlib.redirect_stdout(buf):
                 cli.main(["query", "--currency", "USD", "--impact", "high"])
@@ -158,7 +162,10 @@ class CliRoutingTests(unittest.TestCase):
             " --currency EUR --impact medium"
         )
 
-        with patch.object(cli._query, "run_query", side_effect=ValueError(err_msg)):
+        def fake_raise(*, currencies, impacts, start, end, include_no_data, cache_dir):
+            raise ValueError(err_msg)
+
+        with patch.object(cli._query, "run_query", side_effect=fake_raise):
             buf_err = io.StringIO()
             with contextlib.redirect_stderr(buf_err):
                 with self.assertRaises(SystemExit) as cm:
@@ -173,7 +180,7 @@ class CliRoutingTests(unittest.TestCase):
         """populate subcommand routes to _populate.run_populate with correct args."""
         captured = {}
 
-        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir):
+        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir, force):
             captured["currencies"] = currencies
             captured["raw_dir"] = raw_dir
             return {"populated": 0, "skipped": 0, "empty": 0}
@@ -193,7 +200,7 @@ class CliRoutingTests(unittest.TestCase):
         """D-12: --impact high --impact holiday yields impacts == ["high", "holiday"]."""
         captured = {}
 
-        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir):
+        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir, force):
             captured["impacts"] = impacts
             return {"populated": 0, "skipped": 0, "empty": 0}
 
@@ -239,7 +246,7 @@ class CliValidateMonthTests(unittest.TestCase):
         """A valid month string '2024-03' passes validation without sys.exit."""
         captured = {}
 
-        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir):
+        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir, force):
             captured["start"] = start
             return {"populated": 0, "skipped": 0, "empty": 0}
 
@@ -247,3 +254,128 @@ class CliValidateMonthTests(unittest.TestCase):
             cli.main(["populate", "--start", "2024-03", "--raw-dir", "out"])
 
         self.assertEqual(captured["start"], "2024-03")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase-2 D-09/D-12: --include-no-data and --force flag tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+_SPEECH_EVENT = {
+    "currency": "USD",
+    "impactName": "High Impact Expected",
+    "name": "Fed Chair Powell Speaks",
+    "dateline": 1772323200,
+    "id": "powell-1",
+    "leaked": False,
+    "hasDataValues": False,
+}
+
+_DATA_EVENT = {
+    "currency": "USD",
+    "impactName": "High Impact Expected",
+    "name": "Non-Farm Payrolls",
+    "dateline": 1772326800,
+    "id": "nfp-1",
+    "leaked": False,
+    "hasDataValues": True,
+}
+
+
+class CliIncludeNoDataTests(unittest.TestCase):
+    """D-09/D-12: --include-no-data flag hides speeches by default, surfaces them with flag."""
+
+    def test_default_query_hides_speech_row(self):
+        """Default query result excludes speech events (hasDataValues=False, non-holiday)."""
+        with tempfile.TemporaryDirectory() as raw_dir_str:
+            with tempfile.TemporaryDirectory() as cache_dir_str:
+                raw_dir = pathlib.Path(raw_dir_str)
+                cache_dir = pathlib.Path(cache_dir_str)
+
+                fixture = [{"events": [_DATA_EVENT, _SPEECH_EVENT]}]
+                (raw_dir / "days_2026_03.json").write_text(
+                    json.dumps(fixture), encoding="utf-8"
+                )
+
+                cli.main(["populate", "--raw-dir", str(raw_dir), "--cache-dir", str(cache_dir)])
+
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    cli.main([
+                        "query",
+                        "--currency", "USD",
+                        "--impact", "high",
+                        "--cache-dir", str(cache_dir),
+                    ])
+
+                path_str = buf.getvalue().strip()
+                df = pd.read_parquet(path_str)
+                self.assertFalse(
+                    any(df["title"] == "Fed Chair Powell Speaks"),
+                    "speech must be absent from default query result",
+                )
+                self.assertTrue(
+                    any(df["title"] == "Non-Farm Payrolls"),
+                    "data-bearing event must appear in default query result",
+                )
+
+    def test_include_no_data_flag_surfaces_speech_row(self):
+        """--include-no-data makes speech events appear in the query result (D-09)."""
+        with tempfile.TemporaryDirectory() as raw_dir_str:
+            with tempfile.TemporaryDirectory() as cache_dir_str:
+                raw_dir = pathlib.Path(raw_dir_str)
+                cache_dir = pathlib.Path(cache_dir_str)
+
+                fixture = [{"events": [_DATA_EVENT, _SPEECH_EVENT]}]
+                (raw_dir / "days_2026_03.json").write_text(
+                    json.dumps(fixture), encoding="utf-8"
+                )
+
+                cli.main(["populate", "--raw-dir", str(raw_dir), "--cache-dir", str(cache_dir)])
+
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    cli.main([
+                        "query",
+                        "--currency", "USD",
+                        "--impact", "high",
+                        "--cache-dir", str(cache_dir),
+                        "--include-no-data",
+                    ])
+
+                path_str = buf.getvalue().strip()
+                df = pd.read_parquet(path_str)
+                self.assertTrue(
+                    any(df["title"] == "Fed Chair Powell Speaks"),
+                    "--include-no-data must surface speech events",
+                )
+                self.assertEqual(len(df), 2, "--include-no-data result must contain both rows")
+
+
+class CliForcePopulateTests(unittest.TestCase):
+    """Phase-2: --force flag wired to run_populate(force=...) at dispatch."""
+
+    def test_force_flag_forwarded_to_run_populate(self):
+        """--force sets force=True in the run_populate call."""
+        captured = {}
+
+        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir, force):
+            captured["force"] = force
+            return {"populated": 0, "skipped": 0, "empty": 0}
+
+        with patch.object(cli._populate, "run_populate", side_effect=fake_run_populate):
+            cli.main(["populate", "--force", "--raw-dir", "out"])
+
+        self.assertTrue(captured["force"], "--force must set force=True in run_populate call")
+
+    def test_no_force_flag_defaults_false(self):
+        """Without --force, force=False is passed to run_populate."""
+        captured = {}
+
+        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir, force):
+            captured["force"] = force
+            return {"populated": 0, "skipped": 0, "empty": 0}
+
+        with patch.object(cli._populate, "run_populate", side_effect=fake_run_populate):
+            cli.main(["populate", "--raw-dir", "out"])
+
+        self.assertFalse(captured["force"], "force must default to False when --force not given")

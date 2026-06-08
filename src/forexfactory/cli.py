@@ -103,6 +103,12 @@ def main(argv: list[str] | None = None) -> int:
             f"(default: {_populate.RAW_INPUT_DIR})"
         ),
     )
+    pop.add_argument(
+        "--force",
+        action="store_true",
+        default=False,
+        help="Force rebuild all months even if already cached [Phase-2 migration]",
+    )
 
     # ── refresh ───────────────────────────────────────────────────────────────
     rfr = subparsers.add_parser(
@@ -175,6 +181,12 @@ def main(argv: list[str] | None = None) -> int:
         "--cache-dir", default=None, metavar="DIR",
         help="Override cache directory (default: ~/.cache/forexfactory) [CACHE-01]",
     )
+    qry.add_argument(
+        "--include-no-data",
+        action="store_true",
+        default=False,
+        help="Include speech/no-data events (default: data-bearing + holidays only) [D-09]",
+    )
 
     args = parser.parse_args(argv)
 
@@ -213,6 +225,7 @@ def main(argv: list[str] | None = None) -> int:
             end=args.end,
             raw_dir=args.raw_dir,
             cache_dir=cache_dir,
+            force=args.force,
         )
         logger.info(
             "[populate] done — populated=%d skipped=%d empty=%d",
@@ -228,6 +241,7 @@ def main(argv: list[str] | None = None) -> int:
                 impacts=args.impact,
                 start=args.start,
                 end=args.end,
+                include_no_data=args.include_no_data,
                 cache_dir=cache_dir,
             )
         except ValueError as exc:
