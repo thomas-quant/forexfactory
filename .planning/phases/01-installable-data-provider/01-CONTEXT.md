@@ -107,6 +107,20 @@ fields only), SRC-02 (HTML scrape wired in as a source), QUAL-01..04.
   the library list args (`currencies=["USD"]`, `impacts=["high"]`); no
   comma-splitting.
 
+### Package Identity
+- **D-13: The name is `forexfactory` everywhere** — import name, library namespace
+  (`forexfactory.get(...)`), and the single console-script command
+  (`forexfactory populate` / `refresh` / `query`). This is **locked upstream**, not
+  a discussion choice: REQUIREMENTS.md PKG-01 ("importable as `forexfactory`") and
+  ROADMAP.md Phase-1 Success Criterion 1 (`import forexfactory`). Recorded here
+  only to make it explicit for the planner.
+  - **Distribution name** (`[project] name` in `pyproject.toml`) = `forexfactory`,
+    kept identical to the import name. PyPI publishing is deferred to v2 (DIST-01),
+    so v1 only needs to be locally/git pip-installable (`pip install -e .`).
+  - **src layout:** package lives at `src/forexfactory/`.
+  - **No short CLI alias** (e.g. `ff`) by default — single entry point
+    `forexfactory`. (Easy to add later if wanted.)
+
 ### Claude's Discretion
 The planner/researcher decides these (no user constraint beyond the decisions above):
 - Internal package module structure / decomposition (src layout under
