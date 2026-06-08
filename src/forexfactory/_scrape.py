@@ -2,10 +2,11 @@
 Forex Factory Calendar Scraper (curl_cffi version)
 ===============================================================
 Fetches calendar pages without a browser and extracts the embedded calendar
-state from the HTML.
+state from the HTML. Used by forexfactory._refresh to back the `refresh`
+command (SRC-02).
 
 Usage:
-    python scrape.py
+    from forexfactory._scrape import run_scraper, build_month_pages
 """
 
 import argparse
@@ -33,16 +34,14 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ====== CONFIG ======
-START_DATE = "2021-01-01"
-END_DATE = "2021-06-30"
 OUT_DIR = "out"
 
 # curl_cffi request settings
 IMPERSONATE = "chrome"
 REQUEST_TIMEOUT = 30
 MAX_ATTEMPTS = 3
-BETWEEN_PAGES_DELAY = 0.0
-RETRY_DELAY = 0.0
+BETWEEN_PAGES_DELAY = 1.0  # D-11: polite non-zero default (CONCERNS: was 0.0)
+RETRY_DELAY = 1.0           # D-11: polite non-zero default (CONCERNS: was 0.0)
 
 BASE = "https://www.forexfactory.com/calendar"
 
@@ -376,14 +375,15 @@ def run_scraper(
         days = scrape_month(session, page, retry_delay=retry_delay)
         logger.info("  -> Extracted %s days", len(days))
 
-        with open(out_path, "w", encoding="utf-8") as handle:
-            json.dump(days, handle, ensure_ascii=False, separators=(",", ":"))
-
+        # QUAL-03: only write file when days is non-empty; never write an empty
+        # JSON file that would permanently poison the skip-check on future runs.
         if days:
+            with open(out_path, "w", encoding="utf-8") as handle:
+                json.dump(days, handle, ensure_ascii=False, separators=(",", ":"))
             logger.info("  Saved: %s", out_path)
             success_count += 1
         else:
-            logger.warning("  Saved empty: %s", out_path)
+            logger.warning("  Skipping write for %s — no days extracted", page.anchor)
             fail_count += 1
 
         if between_pages_delay > 0:
@@ -394,26 +394,33 @@ def run_scraper(
 
 def parse_args(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(description="Forex Factory scraper using curl_cffi")
-    parser.add_argument("--start-date", default=START_DATE, help="Start date, YYYY-MM-DD")
-    parser.add_argument("--end-date", default=END_DATE, help="End date, YYYY-MM-DD")
+    # QUAL-04: stale hardcoded date defaults removed; dates are now
+    # required (default=None); refresh computes its range dynamically in _refresh.py.
+    parser.add_argument("--start-date", default=None, help="Start date, YYYY-MM-DD (required)")
+    parser.add_argument("--end-date", default=None, help="End date, YYYY-MM-DD (required)")
     parser.add_argument("--out-dir", default=OUT_DIR, help="Output directory for days_YYYY_MM.json files")
     parser.add_argument(
         "--between-pages-delay",
         type=float,
         default=BETWEEN_PAGES_DELAY,
-        help="Seconds to sleep between month requests (default: 0)",
+        help="Seconds to sleep between month requests (default: %(default)s)",
     )
     parser.add_argument(
         "--retry-delay",
         type=float,
         default=RETRY_DELAY,
-        help="Seconds to sleep before retrying a failed month request (default: 0)",
+        help="Seconds to sleep before retrying a failed month request (default: %(default)s)",
     )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> ScrapeResult:
     args = parse_args(argv)
+
+    # QUAL-04: dates are no longer defaulted to a hardcoded range; require them explicitly.
+    if args.start_date is None or args.end_date is None:
+        logger.error("--start-date and --end-date are required")
+        sys.exit(1)
 
     try:
         start = datetime.strptime(args.start_date, "%Y-%m-%d").date()
