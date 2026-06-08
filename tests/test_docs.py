@@ -27,10 +27,9 @@ def test_project_structure_chart_uses_plain_ascii_and_matches_repo_layout():
     assert "|   |-- test_pipeline.py" in text
     assert "|   `-- test_scrape.py" in text
 
-    # Raw input directory (last top-level item)
+    # Raw input directory (last top-level item; empty after populate-only build)
     assert "`-- out/" in text
-    assert "    |-- days_YYYY_MM.json" in text
-    assert "    `-- ..." in text
+    assert "re-scrape" in text
 
 
 def test_readme_schema_documents_current_parquet_columns():
