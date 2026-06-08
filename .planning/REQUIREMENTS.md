@@ -26,9 +26,9 @@ Requirements for the initial packaged release. Each maps to a roadmap phase.
 ### Data Schema
 
 - [x] **DATA-01**: Each event record carries the core fields: `datetime_utc`, `currency`, `impact`, `title`, `id`, `leaked`
-- [ ] **DATA-02**: Each event carries data values `forecast`, `actual`, `previous`, `revision`, `hasDataValues`, stored as both raw strings and parsed numeric
-- [ ] **DATA-03**: Each event carries surprise/identity fields `actualBetterWorse`, `revisionBetterWorse`, `ebaseId`, `country`
-- [ ] **DATA-04**: FF UI/internal fields (`checker`, `releaser`, `siteId`, `show*`/`enable*`, `notice`, naming duplicates) are dropped
+- [x] **DATA-02**: Each event carries data values `forecast`, `actual`, `previous`, `revision`, `hasDataValues`, stored as both raw strings and parsed numeric
+- [x] **DATA-03**: Each event carries surprise/identity fields `actualBetterWorse`, `revisionBetterWorse`, `ebaseId`, `country`
+- [x] **DATA-04**: FF UI/internal fields (`checker`, `releaser`, `siteId`, `show*`/`enable*`, `notice`, naming duplicates) are dropped
 - [ ] **DATA-05**: Speech/holiday/no-data events are retained in the cache (distinguished by `hasDataValues`); dropping them becomes an optional query-time filter rather than a hard pipeline step
 
 ### Data Source
@@ -85,9 +85,9 @@ Populated during roadmap creation — each requirement maps to exactly one phase
 | CACHE-05 | Phase 3 | Pending |
 | CACHE-06 | Phase 3 | Pending |
 | DATA-01 | Phase 1 | Complete |
-| DATA-02 | Phase 2 | Pending |
-| DATA-03 | Phase 2 | Pending |
-| DATA-04 | Phase 2 | Pending |
+| DATA-02 | Phase 2 | Complete |
+| DATA-03 | Phase 2 | Complete |
+| DATA-04 | Phase 2 | Complete |
 | DATA-05 | Phase 2 | Pending |
 | SRC-01 | Phase 2 | Pending |
 | SRC-02 | Phase 1 | Complete |
