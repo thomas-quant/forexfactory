@@ -1,14 +1,137 @@
-# Forex Factory Economic Calendar Scraper
+# Forex Factory Economic Calendar Data Provider
 
-A Python toolkit for scraping and processing economic calendar data from [Forex Factory](https://www.forexfactory.com/calendar). It scrapes raw month JSON files and then runs the existing pipeline to produce a Parquet dataset.
+A pip-installable Python package that scrapes the [Forex Factory](https://www.forexfactory.com/calendar) economic calendar and serves it from a shared local parquet cache. Install once, populate once, and read the same data from any project — via a CLI or as a library.
 
 ## Features
 
-- **Browserless scraping** — `scrape.py` uses `curl_cffi` instead of browser automation
-- **Proven parity** — matched the old headed nodriver scraper across the tested comparison span
-- **Faster runs** — documented faster than both legacy browser automation paths
-- **Incremental scraping** — skips already-downloaded months; safe to interrupt and resume
-- **Pipeline unchanged** — JSON → CSV → cleaned CSV → Parquet
+- **Shared local cache** — one `~/.cache/forexfactory/` directory readable from any project
+- **Browserless scraping** — `curl_cffi` TLS fingerprint impersonation, no browser automation
+- **Incremental refresh** — `forexfactory refresh` gap-fills missing months over the network; never overwrites settled months
+- **Script-friendly query** — `forexfactory query` prints only the parquet path to stdout (`PARQUET=$(forexfactory query ...)`)
+- **Library API** — `forexfactory.get(currencies=[...], impacts=[...]) -> pathlib.Path`
+
+## Quick Start
+
+### 1. Install
+
+```bash
+pip install -e .
+```
+
+### 2. Populate the Cache
+
+Build the parquet cache from the on-disk raw JSON files (zero network calls):
+
+```bash
+forexfactory populate
+```
+
+Default scope: **USD** currency, **high** and **holiday** impact, all months on disk (~195 months, 2010-01 → 2026-03). Widen the scope with repeatable flags:
+
+```bash
+forexfactory populate --currency USD --currency EUR --impact high --impact medium
+```
+
+Override the cache directory (default: `~/.cache/forexfactory/`):
+
+```bash
+forexfactory populate --cache-dir /path/to/cache
+```
+
+### 3. Query the Cache
+
+```bash
+forexfactory query --currency USD --impact high
+```
+
+`query` prints **only** the absolute path of the result parquet to stdout — no other output — making it shell-friendly:
+
+```bash
+PARQUET=$(forexfactory query --currency USD --impact high)
+python -c "import pandas as pd; print(pd.read_parquet('$PARQUET').head())"
+```
+
+If the requested currency/impact combination has not been populated, `query` exits non-zero and prints actionable guidance to stderr (run `forexfactory populate --currency ... --impact ...` first).
+
+### 4. Refresh (Network)
+
+Fetch months not yet in the cache from Forex Factory over the network:
+
+```bash
+forexfactory refresh
+```
+
+By default `refresh` gap-fills from the last cached month through the current month, with a polite 1-second delay between requests. It does not overwrite already-cached months.
+
+## Library API
+
+```python
+import forexfactory
+from pathlib import Path
+
+path: Path = forexfactory.get(currencies=["USD"], impacts=["high"])
+
+import pandas as pd
+df = pd.read_parquet(path)
+```
+
+## Output Schema
+
+The cache stores data as parquet with the following DATA-01 core columns:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `datetime_utc` | datetime64[ns, UTC] | Event timestamp in UTC |
+| `currency` | string | Currency code (e.g. USD) |
+| `impact` | string | Impact level (high, holiday, medium, low) |
+| `title` | string | Event name |
+| `id` | string | Forex Factory event ID |
+| `leaked` | boolean | Whether Forex Factory marked the event as leaked |
+
+## Cache Layout
+
+The cache lives at `~/.cache/forexfactory/` by default (override with `--cache-dir` or the
+`FOREXFACTORY_CACHE_DIR` environment variable):
+
+```
+~/.cache/forexfactory/
+|-- manifest.json          # populated scope + per-month provenance
+|-- raw/                   # staging JSON (temporary; removed in Phase 2)
+|   `-- days_YYYY_MM.json
+|-- queries/               # per-scope result parquets
+|   `-- USD_high_....parquet
+`-- YYYY-MM.parquet        # one file per calendar month
+```
+
+## Project Structure
+
+```text
+forexfactory/
+|-- pyproject.toml
+|-- requirements.txt
+|-- README.md
+|-- src/forexfactory/
+|   |-- __init__.py
+|   |-- cli.py
+|   |-- _cache.py
+|   |-- _pipeline.py
+|   |-- _populate.py
+|   |-- _query.py
+|   |-- _refresh.py
+|   `-- _scrape.py
+|-- tests/
+|   |-- test_cache.py
+|   |-- test_cli.py
+|   |-- test_docs.py
+|   |-- test_pipeline.py
+|   |-- test_populate.py
+|   |-- test_query.py
+|   |-- test_refresh.py
+|   `-- test_scrape.py
+`-- out/
+    |-- days_YYYY_MM.json
+    `-- ...
+```
 
 ## Performance
 
@@ -18,7 +141,7 @@ For **2021-01-01 → 2021-06-30**:
 |---------|------|-------|
 | `scrape_selenium.py` | 16.5s | legacy `undetected-chromedriver` figure from the old README |
 | old nodriver `scrape.py` | 10.3s | legacy nodriver figure from the old README |
-| current `scrape.py` | **6.171s** | current `curl_cffi` scraper |
+| current `curl_cffi` scraper | **6.171s** | current implementation |
 
 Stepwise speedups on that same 6-month span:
 
@@ -27,97 +150,6 @@ Stepwise speedups on that same 6-month span:
 - `curl_cffi` is **62.6% faster** than `undetected-chromedriver` overall
 
 The current scraper also matched the old headed nodriver output exactly on the tested 6-month comparison span.
-
-## Quick Start
-
-### 1. Install Dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### 2. Scrape Data
-
-```bash
-python scrape.py
-```
-
-`scrape.py` fetches Forex Factory HTML with `curl_cffi`, extracts the embedded calendar state, and writes raw JSON to `out/days_YYYY_MM.json`.
-
-Example:
-
-```bash
-python scrape.py --start-date 2026-03-01 --end-date 2026-03-31
-python scrape.py --start-date 2026-03-01 --end-date 2026-03-31 --between-pages-delay 1.0
-python scrape.py --start-date 2026-03-01 --end-date 2026-03-31 --retry-delay 0.5
-```
-
-Both delay settings default to `0`.
-
-### 3. Process Data
-
-```bash
-# Full pipeline: JSON -> Parquet (recommended)
-python pipeline.py
-
-# Or run individual steps:
-python pipeline.py --step parse      # JSON -> CSV
-python pipeline.py --step sanitize   # Remove 'speaks' events
-python pipeline.py --step parquet    # CSV -> Parquet
-```
-
-## Output
-
-The pipeline produces `economic_events.parquet` with the following schema:
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `datetime_utc` | datetime64[ns, UTC] | Event timestamp |
-| `currency` | string | Currency code (USD) |
-| `impact` | string | Impact level (high, holiday) |
-| `title` | string | Event name |
-| `id` | string | Forex Factory event ID |
-
-## Configuration
-
-### Scraper (`scrape.py`)
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `START_DATE` | `2021-01-01` | Scraping start date |
-| `END_DATE` | `2021-06-30` | Scraping end date |
-| `OUT_DIR` | `out` | Output directory |
-| `MAX_ATTEMPTS` | `3` | Retries per month |
-| `BETWEEN_PAGES_DELAY` | `0.0` | Delay between month requests |
-| `RETRY_DELAY` | `0.0` | Delay before retrying failed requests |
-
-### Pipeline Configuration
-
-Edit `pipeline.py` constants to customize filtering:
-
-```python
-KEEP_CURRENCIES = {"USD"}           # Filter by currency
-KEEP_IMPACTS = {"high", "holiday"}  # Filter by impact level
-```
-
-## Project Structure
-
-```
-├── scrape.py         # Browserless scraper using curl_cffi
-├── pipeline.py       # Data processing pipeline
-├── requirements.txt  # Python dependencies
-├── out/              # Scraped JSON data
-│   ├── days_2021_01.json
-│   ├── days_2021_02.json
-│   └── ...
-└── economic_events.parquet  # Final processed output
-```
-
-## Notes
-
-- The old nodriver and Selenium scrapers have been removed.
-- `scrape.py` is now the single scraper entrypoint.
-- Comparison runs showed exact output parity against the old headed nodriver path for the tested range.
 
 ## Data Source
 
