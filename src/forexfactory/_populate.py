@@ -115,6 +115,7 @@ def run_populate(
     raw_dir: str = RAW_INPUT_DIR,
     cache_dir: Path | None = None,
     force: bool = False,
+    force_refresh: bool = False,
 ) -> dict:
     """Populate the cache from on-disk raw JSON files. Makes zero network calls.
 
@@ -125,12 +126,22 @@ def run_populate(
         end: Last month to process as "YYYY-MM" (default: all on disk — D-05).
         raw_dir: Directory containing days_YYYY_MM.json files (default: "out").
         cache_dir: Cache root directory. Resolved via _cache.resolve_cache_dir.
-        force: When True, rebuild every month unconditionally, bypassing the
-               manifest skip-check. Used for Phase-2 schema migration (RESEARCH
-               Pattern 6). CLI --force flag is in plan 02-02 (cli.py ownership).
+        force: When True, rebuild every month unconditionally from on-disk raw JSON,
+               bypassing the manifest skip-check. Used for Phase-2 schema migration
+               (RESEARCH Pattern 6). Makes zero network calls. CLI --force flag is
+               in plan 02-02 (cli.py ownership). Distinct from force_refresh (D-01).
+        force_refresh: When True, short-circuit the disk-ingest loop and delegate
+                       to run_refresh(force_refresh=True) to re-scrape the requested
+                       range over the network and overwrite cached parquets. Returns
+                       run_refresh's {"fetched","skipped","failed"} dict instead of
+                       the normal {"populated","skipped","empty"} dict (D-04). The
+                       effective scope is unioned with the existing manifest scope to
+                       avoid silently narrowing previously-cached months' parquets
+                       (D-01/D-03/D-04). Default False preserves disk-ingest behavior.
 
     Returns:
-        dict with keys: populated (int), skipped (int), empty (int).
+        If force_refresh=True: dict with keys fetched (int), skipped (int), failed (int).
+        Otherwise: dict with keys populated (int), skipped (int), empty (int).
     """
     # Resolve defaults (D-04)
     if currencies is None:
@@ -141,6 +152,29 @@ def run_populate(
     # Resolve cache dir and ensure layout exists
     resolved_cache = _cache.resolve_cache_dir(cache_dir)
     _cache.ensure_dirs(resolved_cache)
+
+    # CACHE-06 / D-01: force_refresh short-circuits the disk-ingest loop and
+    # delegates to run_refresh(force_refresh=True) for the requested range.
+    # The effective scope is unioned with the existing manifest scope to avoid
+    # silently narrowing previously-cached months' parquets.
+    if force_refresh:
+        from forexfactory import _refresh  # noqa: PLC0415 — lazy to avoid circular import
+        manifest = _cache.read_manifest(resolved_cache)
+        existing_scope = manifest.get("scope", {})
+        effective_currencies = sorted(
+            set(currencies) | set(existing_scope.get("currencies", []))
+        )
+        effective_impacts = sorted(
+            set(impacts) | set(existing_scope.get("impacts", []))
+        )
+        return _refresh.run_refresh(
+            currencies=effective_currencies,
+            impacts=effective_impacts,
+            start=start,
+            end=end,
+            cache_dir=resolved_cache,
+            force_refresh=True,
+        )
 
     # Discover month anchors from raw dir (D-05 — all on-disk months)
     pattern = os.path.join(raw_dir, "days_*.json")
