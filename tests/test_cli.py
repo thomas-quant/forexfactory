@@ -118,7 +118,8 @@ class CliRoutingTests(unittest.TestCase):
         """D-12: --currency USD --currency EUR yields currencies == ["USD", "EUR"]."""
         captured = {}
 
-        def fake_run_query(*, currencies, impacts, start, end, include_no_data, cache_dir):
+        def fake_run_query(*, currencies, impacts, start, end, include_no_data, cache_dir,
+                           progress=None, auto_fetch=True, session=None):
             captured["currencies"] = currencies
             captured["impacts"] = impacts
             return pathlib.Path("/tmp/fake.parquet")  # cli.main just prints it
@@ -139,7 +140,8 @@ class CliRoutingTests(unittest.TestCase):
         """D-10: query subcommand writes exactly the parquet path to stdout, nothing else."""
         fake_path = pathlib.Path("/tmp/fake_result.parquet")
 
-        def fake_run_query(*, currencies, impacts, start, end, include_no_data, cache_dir):
+        def fake_run_query(*, currencies, impacts, start, end, include_no_data, cache_dir,
+                           progress=None, auto_fetch=True, session=None):
             return fake_path
 
         with patch.object(cli._query, "run_query", side_effect=fake_run_query):
@@ -162,7 +164,8 @@ class CliRoutingTests(unittest.TestCase):
             " --currency EUR --impact medium"
         )
 
-        def fake_raise(*, currencies, impacts, start, end, include_no_data, cache_dir):
+        def fake_raise(*, currencies, impacts, start, end, include_no_data, cache_dir,
+                       progress=None, auto_fetch=True, session=None):
             raise ValueError(err_msg)
 
         with patch.object(cli._query, "run_query", side_effect=fake_raise):
@@ -476,3 +479,115 @@ class CliForceRefreshTests(unittest.TestCase):
 
         self.assertFalse(captured["force_refresh"],
                          "force_refresh must default to False without --force-refresh")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CACHE-05 / D-11/D-12: CLI matured-months banner tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+class CliMaturedBannerTests(unittest.TestCase):
+    """D-11/D-12: CLI query prints matured-months banner to stdout before path."""
+
+    _FIXTURE_DAYS_WITH_ACTUAL = [
+        {
+            "events": [
+                {
+                    "currency": "USD",
+                    "impactName": "High Impact Expected",
+                    "name": "CPI y/y",
+                    "dateline": 1746057600,
+                    "id": "cpi-1",
+                    "leaked": False,
+                    "hasDataValues": True,
+                    "forecast": "4.3%",
+                    "actual": "4.5%",
+                }
+            ]
+        }
+    ]
+
+    def _seed_matured_cache(self, cache_dir: pathlib.Path) -> None:
+        """Seed a cache with a settled:false past month (2026-05)."""
+        from forexfactory import _cache, _populate
+        from datetime import date
+
+        _cache.ensure_dirs(cache_dir)
+        anchor = date(2026, 5, 1)
+        stale_days = [{"events": [{
+            "currency": "USD",
+            "impactName": "High Impact Expected",
+            "name": "CPI y/y",
+            "dateline": 1746057600,
+            "id": "cpi-1",
+            "leaked": False,
+            "hasDataValues": True,
+            "forecast": "4.3%",
+        }]}]
+        _populate.build_month_parquet(
+            cache_dir, anchor, stale_days,
+            currencies=["USD"], impacts=["high", "holiday"],
+        )
+        _cache.write_manifest(cache_dir, {
+            "scope": {"currencies": ["USD"], "impacts": ["high", "holiday"]},
+            "months": {
+                "2026-05": {"scraped_at": "2026-01-01T00:00:00Z", "settled": False},
+            },
+        })
+
+    def test_matured_banner_printed_before_path(self):
+        """D-12: CLI query prints matured banner to stdout before the parquet path line."""
+        from forexfactory import _scrape
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = pathlib.Path(tmpdir) / "cache"
+            self._seed_matured_cache(cache_dir)
+
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                with patch.object(_scrape, "scrape_month",
+                                  return_value=self._FIXTURE_DAYS_WITH_ACTUAL):
+                    cli.main([
+                        "query",
+                        "--currency", "USD",
+                        "--impact", "high",
+                        "--cache-dir", str(cache_dir),
+                    ])
+
+            output = buf.getvalue()
+            lines = [ln.strip() for ln in output.splitlines() if ln.strip()]
+
+            # Must contain the D-12 banner
+            self.assertTrue(
+                any("months matured since last run" in ln for ln in lines),
+                f"D-12 matured banner must appear on stdout; got: {output!r}",
+            )
+            # Banner must be "1 months matured since last run — refreshing actuals..."
+            banner_lines = [ln for ln in lines if "months matured" in ln]
+            self.assertEqual(len(banner_lines), 1)
+            self.assertIn("1 months matured since last run", banner_lines[0])
+
+            # Final line must be the absolute parquet path
+            last_line = lines[-1]
+            result_path = pathlib.Path(last_line)
+            self.assertTrue(result_path.is_absolute(), "last stdout line must be an absolute path")
+            self.assertTrue(result_path.exists(), "result parquet path must exist on disk")
+
+    def test_no_matured_months_no_banner(self):
+        """D-12: no banner when all months are settled (fake run_query never fires callback)."""
+        fake_path = pathlib.Path("/tmp/settled.parquet")
+
+        def fake_run_query(*, currencies, impacts, start, end, include_no_data, cache_dir,
+                           progress=None, auto_fetch=True, session=None):
+            # Simulate: run_query with settled cache — progress is never called
+            return fake_path
+
+        with patch.object(cli._query, "run_query", side_effect=fake_run_query):
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                cli.main(["query", "--currency", "USD", "--impact", "high"])
+
+        output = buf.getvalue()
+        non_empty = [ln.strip() for ln in output.splitlines() if ln.strip()]
+        self.assertEqual(len(non_empty), 1,
+                         "no banner when no matured months — exactly one stdout line (D-10)")
+        self.assertEqual(non_empty[0], str(fake_path))
