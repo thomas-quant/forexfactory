@@ -951,6 +951,53 @@ class PopulateForceRefreshTests(unittest.TestCase):
                 "WR-01: force_refresh with no range must re-scrape 2026-04 (end of cached span)",
             )
 
+    def test_force_refresh_uses_injected_session_not_build_session(self):
+        """WR-03: session passed to run_populate is forwarded to run_refresh on the force_refresh path.
+
+        When an injected session is provided, _scrape.build_session() must NOT be called.
+        The injected session must be the one used by scrape_month.
+        """
+        from forexfactory import _populate, _scrape
+
+        days = [{"events": [self._usd_high_event()]}]
+        injected_session = object()
+        sessions_seen = []
+
+        def capture_session_scrape(session, page, *, retry_delay):
+            sessions_seen.append(session)
+            return days
+
+        build_session_calls = []
+
+        def fake_build_session():
+            build_session_calls.append(True)
+            return object()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            cache_dir.mkdir()
+
+            with patch.object(_scrape, "scrape_month", side_effect=capture_session_scrape), \
+                 patch.object(_scrape, "build_session", side_effect=fake_build_session):
+                _populate.run_populate(
+                    force_refresh=True,
+                    start="2026-05",
+                    end="2026-05",
+                    cache_dir=cache_dir,
+                    session=injected_session,
+                )
+
+        # build_session must NOT have been called — injected session was forwarded.
+        self.assertEqual(
+            len(build_session_calls), 0,
+            "WR-03: build_session must not be called when a session is injected via run_populate",
+        )
+        # The injected session must have been passed to scrape_month.
+        self.assertTrue(
+            any(s is injected_session for s in sessions_seen),
+            "WR-03: injected session must be forwarded through run_refresh to scrape_month",
+        )
+
     def test_force_refresh_signature_in_run_populate(self):
         """run_populate() has a 'force_refresh' keyword-only parameter (D-03)."""
         import inspect

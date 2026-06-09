@@ -207,6 +207,7 @@ def run_populate(
             end=end,
             cache_dir=resolved_cache,
             force_refresh=True,
+            session=session,  # WR-03: forward injected session so build_session() is not called
         )
 
     # Discover month anchors from raw dir (D-05 — all on-disk months)
