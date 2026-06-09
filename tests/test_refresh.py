@@ -184,6 +184,90 @@ class RefreshForceRefreshTests(unittest.TestCase):
             self.assertEqual(result["skipped"], 0)
             self.assertEqual(result["failed"], 0)
 
+    def test_force_refresh_unions_existing_manifest_scope(self):
+        """CR-01 regression: force-refresh at a narrow scope unions with existing manifest scope.
+
+        Cache seeded at USD/high+holiday; force-refresh requested for EUR/high only.
+        The rebuilt parquet must still contain USD rows because the scope was unioned.
+        """
+        import pandas as pd
+        from forexfactory import _populate, _cache
+
+        # Days containing both USD (existing scope) and EUR (new request) events.
+        mixed_days = [{"events": [
+            {
+                "currency": "USD",
+                "impactName": "High Impact Expected",
+                "name": "CPI y/y",
+                "dateline": 1772368200,
+                "id": "cpi-1",
+                "leaked": False,
+                "hasDataValues": True,
+            },
+            {
+                "currency": "EUR",
+                "impactName": "High Impact Expected",
+                "name": "ECB Rate Decision",
+                "dateline": 1772368200,
+                "id": "ecb-1",
+                "leaked": False,
+                "hasDataValues": True,
+            },
+        ]}]
+        html = self._make_html(mixed_days)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir)
+            _cache.ensure_dirs(cache_dir)
+
+            # Seed: build a USD/high+holiday parquet and manifest entry.
+            anchor = date(2026, 5, 1)
+            usd_days = [{"events": [{
+                "currency": "USD",
+                "impactName": "High Impact Expected",
+                "name": "CPI y/y",
+                "dateline": 1772368200,
+                "id": "cpi-1",
+                "leaked": False,
+                "hasDataValues": True,
+            }]}]
+            _populate.build_month_parquet(
+                cache_dir, anchor, usd_days,
+                currencies=["USD"], impacts=["high", "holiday"],
+            )
+            _cache.update_manifest_month(
+                cache_dir, anchor,
+                scraped_at="2026-01-01T00:00:00Z",
+                settled=True,
+                currencies=["USD"],
+                impacts=["high", "holiday"],
+            )
+
+            # Force-refresh requesting only EUR/high — must union with existing USD scope.
+            fake_session = FakeSession([FakeResponse(html)])
+            result = run_refresh(
+                currencies=["EUR"],
+                impacts=["high"],
+                start="2026-05",
+                end="2026-05",
+                cache_dir=cache_dir,
+                session=fake_session,
+                between_pages_delay=0.0,
+                retry_delay=0.0,
+                force_refresh=True,
+            )
+
+            self.assertEqual(result["fetched"], 1)
+
+            # The rebuilt parquet must STILL contain USD rows.
+            parquet_path = _cache.month_parquet_path(cache_dir, anchor)
+            df = pd.read_parquet(parquet_path)
+            usd_rows = df[df["currency"] == "USD"]
+            self.assertGreater(
+                len(usd_rows), 0,
+                "CR-01: USD rows must survive a force-refresh requested at EUR-only scope",
+            )
+
     def test_force_refresh_false_preserves_skip_behavior(self):
         """force_refresh=False (explicit) skips a month with non-empty raw JSON — regression guard."""
         days = [{"events": [{"currency": "USD", "impactName": "high",

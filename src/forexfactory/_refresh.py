@@ -90,6 +90,15 @@ def run_refresh(
     resolved_cache = _cache.resolve_cache_dir(cache_dir)
     _cache.ensure_dirs(resolved_cache)
 
+    # CR-01: When force_refresh=True, union the requested scope with the existing
+    # manifest scope to prevent silently narrowing previously-cached months' parquets.
+    # This mirrors widen_scope_to_cover() and run_populate()'s force_refresh path.
+    # The default gap-fill path (force_refresh=False) is unchanged.
+    if force_refresh:
+        existing_scope = _cache.read_manifest(resolved_cache).get("scope", {})
+        currencies = sorted(set(currencies) | set(existing_scope.get("currencies", [])))
+        impacts = sorted(set(impacts) | set(existing_scope.get("impacts", [])))
+
     # Compute date range (D-11 / QUAL-04: no hardcoded defaults)
     start_date, end_date = _compute_date_range(resolved_cache, start, end)
 
