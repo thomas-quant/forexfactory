@@ -216,6 +216,149 @@ class RefreshForceRefreshTests(unittest.TestCase):
             self.assertEqual(result["failed"], 0)
 
 
+class RefreshMaturedMonthsTests(unittest.TestCase):
+    """CACHE-05: refresh_matured_months() detects and re-fetches matured months."""
+
+    def _make_stale_parquet(self, cache_dir: Path, anchor: date) -> None:
+        """Write a stale parquet with no actual value for the given month anchor."""
+        from forexfactory import _populate
+        stale_days = [{"events": [{
+            "currency": "USD",
+            "impactName": "High Impact Expected",
+            "name": "CPI y/y",
+            "dateline": 1746057600,
+            "id": "cpi-1",
+            "leaked": False,
+            "hasDataValues": True,
+            "forecast": "4.3%",
+            # no "actual" — stale forecast-only
+        }]}]
+        _populate.build_month_parquet(
+            cache_dir, anchor, stale_days,
+            currencies=["USD"], impacts=["high", "holiday"],
+        )
+
+    def _seed_manifest(self, cache_dir: Path, months_settled: dict) -> None:
+        """Write a manifest with given months {key: settled_bool} and USD/high scope."""
+        manifest = {
+            "scope": {"currencies": ["USD"], "impacts": ["high", "holiday"]},
+            "months": {
+                k: {"scraped_at": "2026-01-01T00:00:00Z", "settled": v}
+                for k, v in months_settled.items()
+            },
+        }
+        _cache.write_manifest(cache_dir, manifest)
+
+    def test_matured_month_is_refetched_and_parquet_updated(self):
+        """CACHE-05 / SC2: settled:false past month re-fetched; rebuilt parquet has actuals."""
+        import pandas as pd
+        from forexfactory import _populate, _scrape
+        from forexfactory._refresh import refresh_matured_months
+
+        anchor = date(2026, 5, 1)  # May 2026 — fully in the past (today 2026-06-09)
+        fresh_days = [{"events": [{
+            "currency": "USD",
+            "impactName": "High Impact Expected",
+            "name": "CPI y/y",
+            "dateline": 1746057600,
+            "id": "cpi-1",
+            "leaked": False,
+            "hasDataValues": True,
+            "forecast": "4.3%",
+            "actual": "4.5%",
+        }]}]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir)
+            _cache.ensure_dirs(cache_dir)
+            self._make_stale_parquet(cache_dir, anchor)
+            self._seed_manifest(cache_dir, {"2026-05": False})
+
+            with patch.object(_scrape, "scrape_month", return_value=fresh_days):
+                result = refresh_matured_months(
+                    cache_dir,
+                    session=object(),
+                    between_pages_delay=0.0,
+                    retry_delay=0.0,
+                )
+
+            self.assertEqual(result["matured"], 1)
+            self.assertEqual(result["refreshed"], 1)
+            self.assertEqual(result["failed"], 0)
+
+            parquet_path = _cache.month_parquet_path(cache_dir, anchor)
+            df = pd.read_parquet(parquet_path)
+            self.assertEqual(len(df), 1)
+            self.assertFalse(
+                pd.isna(df.iloc[0]["actual"]),
+                "rebuilt parquet must have a non-NaN actual after matured re-fetch (SC2)",
+            )
+
+    def test_no_matured_months_makes_no_network_calls(self):
+        """CACHE-05: all months settled=True → no network calls, matured/refreshed/failed all 0."""
+        from forexfactory._refresh import refresh_matured_months
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir)
+            _cache.ensure_dirs(cache_dir)
+            self._seed_manifest(cache_dir, {"2026-03": True, "2026-04": True})
+
+            fake_session = FakeSession([])  # no responses — must not be called
+            result = refresh_matured_months(
+                cache_dir,
+                session=fake_session,
+                between_pages_delay=0.0,
+                retry_delay=0.0,
+            )
+
+            self.assertEqual(len(fake_session.calls), 0,
+                             "no network calls when no matured months")
+            self.assertEqual(result["matured"], 0)
+            self.assertEqual(result["refreshed"], 0)
+            self.assertEqual(result["failed"], 0)
+
+    def test_failed_refetch_serves_stale_parquet_and_warns(self):
+        """CACHE-05 / D-10: failed re-fetch leaves stale parquet, emits one warning, never raises."""
+        from forexfactory import _scrape
+        from forexfactory._refresh import refresh_matured_months
+
+        anchor = date(2026, 5, 1)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir)
+            _cache.ensure_dirs(cache_dir)
+            self._make_stale_parquet(cache_dir, anchor)
+            self._seed_manifest(cache_dir, {"2026-05": False})
+
+            parquet_path = _cache.month_parquet_path(cache_dir, anchor)
+            mtime_before = parquet_path.stat().st_mtime
+
+            # scrape_month returns [] → run_refresh reports failed=1 (D-10)
+            with patch.object(_scrape, "scrape_month", return_value=[]):
+                with self.assertLogs(level="WARNING") as log_cm:
+                    result = refresh_matured_months(
+                        cache_dir,
+                        session=object(),
+                        between_pages_delay=0.0,
+                        retry_delay=0.0,
+                    )
+
+            # Stale parquet must still exist unchanged
+            self.assertTrue(parquet_path.exists(),
+                            "stale parquet must survive failed re-fetch (D-10)")
+            self.assertEqual(parquet_path.stat().st_mtime, mtime_before,
+                             "stale parquet mtime must not change on failed re-fetch")
+
+            # Exactly one [matured] warning from refresh_matured_months (D-10)
+            matured_warnings = [m for m in log_cm.output if "[matured]" in m]
+            self.assertEqual(len(matured_warnings), 1,
+                             "exactly one [matured] re-fetch warning must be emitted")
+
+            self.assertEqual(result["failed"], 1)
+            self.assertEqual(result["refreshed"], 0)
+            self.assertEqual(result["matured"], 1)
+
+
 class RefreshCliRoutingTests(unittest.TestCase):
 
     def test_cli_refresh_dispatches_to_run_refresh_with_append_currencies(self):
