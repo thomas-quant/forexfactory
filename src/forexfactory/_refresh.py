@@ -257,6 +257,79 @@ def refresh_matured_months(
     return {"matured": matured_count, "refreshed": refreshed_count, "failed": failed_count}
 
 
+def widen_scope_to_cover(
+    cache_dir,
+    currencies,
+    impacts,
+    *,
+    session=None,
+    between_pages_delay: float | None = None,
+    retry_delay: float | None = None,
+) -> None:
+    """Re-fetch the full cached month range at the union scope to cover a scope-miss (CACHE-03/D-05).
+
+    Reads the manifest to determine the existing scope and the full cached month range
+    (min..max of manifest month keys), then calls run_refresh(force_refresh=True) at the
+    UNION of the existing scope with the requested currencies/impacts.  This permanently
+    widens the manifest scope so future queries do not re-trigger a fetch (D-05).
+
+    Raises:
+        AutoFetchError: if run_refresh raises, or if after run_refresh the manifest scope
+                        still does not cover the requested currencies/impacts (D-06 fail-closed).
+    """
+    from forexfactory._exceptions import AutoFetchError
+
+    resolved_cache = _cache.resolve_cache_dir(cache_dir)
+    _cache.ensure_dirs(resolved_cache)
+
+    manifest = _cache.read_manifest(resolved_cache)
+    scope = manifest.get("scope", {})
+    month_keys = sorted(manifest.get("months", {}).keys())
+
+    # Compute full range (D-05: full cached range, not just a query window)
+    if month_keys:
+        start = month_keys[0]
+        end = month_keys[-1]
+    else:
+        # No cached months — fall back to current month
+        today = date.today()
+        start = end = f"{today:%Y-%m}"
+
+    # Compute union scope (D-05: union preserves existing currency/impact coverage)
+    union_currencies = sorted(
+        set(scope.get("currencies", [])) | set(currencies)
+    )
+    union_impacts = sorted(
+        set(scope.get("impacts", [])) | set(impacts)
+    )
+
+    # Call run_refresh with force_refresh=True; wrap any exception as AutoFetchError (D-06)
+    try:
+        run_refresh(
+            currencies=union_currencies,
+            impacts=union_impacts,
+            start=start,
+            end=end,
+            cache_dir=resolved_cache,
+            session=session,
+            between_pages_delay=between_pages_delay,
+            retry_delay=retry_delay,
+            force_refresh=True,
+        )
+    except Exception as exc:
+        raise AutoFetchError(
+            f"auto-fetch failed to widen scope to cover {currencies}/{impacts}: {exc}"
+        ) from exc
+
+    # Re-read manifest and confirm scope now covers the request (D-06: fail-closed, no partial data)
+    manifest = _cache.read_manifest(resolved_cache)
+    updated_scope = manifest.get("scope", {})
+    if not _cache._scope_covers(updated_scope, currencies, impacts):
+        raise AutoFetchError(
+            f"auto-fetch failed to widen scope to cover {currencies}/{impacts}"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
