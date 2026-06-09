@@ -183,7 +183,7 @@ class CliRoutingTests(unittest.TestCase):
         """populate subcommand routes to _populate.run_populate with correct args."""
         captured = {}
 
-        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir, force, force_refresh=False):
+        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir, force, force_refresh=False, auto_fetch=True):
             captured["currencies"] = currencies
             captured["raw_dir"] = raw_dir
             return {"populated": 0, "skipped": 0, "empty": 0}
@@ -203,7 +203,7 @@ class CliRoutingTests(unittest.TestCase):
         """D-12: --impact high --impact holiday yields impacts == ["high", "holiday"]."""
         captured = {}
 
-        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir, force, force_refresh=False):
+        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir, force, force_refresh=False, auto_fetch=True):
             captured["impacts"] = impacts
             return {"populated": 0, "skipped": 0, "empty": 0}
 
@@ -249,7 +249,7 @@ class CliValidateMonthTests(unittest.TestCase):
         """A valid month string '2024-03' passes validation without sys.exit."""
         captured = {}
 
-        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir, force, force_refresh=False):
+        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir, force, force_refresh=False, auto_fetch=True):
             captured["start"] = start
             return {"populated": 0, "skipped": 0, "empty": 0}
 
@@ -361,7 +361,7 @@ class CliForcePopulateTests(unittest.TestCase):
         """--force sets force=True in the run_populate call."""
         captured = {}
 
-        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir, force, force_refresh=False):
+        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir, force, force_refresh=False, auto_fetch=True):
             captured["force"] = force
             return {"populated": 0, "skipped": 0, "empty": 0}
 
@@ -374,7 +374,7 @@ class CliForcePopulateTests(unittest.TestCase):
         """Without --force, force=False is passed to run_populate."""
         captured = {}
 
-        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir, force, force_refresh=False):
+        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir, force, force_refresh=False, auto_fetch=True):
             captured["force"] = force
             return {"populated": 0, "skipped": 0, "empty": 0}
 
@@ -391,7 +391,7 @@ class CliForceRefreshTests(unittest.TestCase):
         """--force-refresh on populate sets force_refresh=True in run_populate call."""
         captured = {}
 
-        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir, force, force_refresh=False):
+        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir, force, force_refresh=False, auto_fetch=True):
             captured["force_refresh"] = force_refresh
             return {"fetched": 1, "skipped": 0, "failed": 0}
 
@@ -406,7 +406,7 @@ class CliForceRefreshTests(unittest.TestCase):
         """Without --force-refresh, force_refresh=False is passed to run_populate."""
         captured = {}
 
-        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir, force, force_refresh=False):
+        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir, force, force_refresh=False, auto_fetch=True):
             captured["force_refresh"] = force_refresh
             return {"populated": 0, "skipped": 0, "empty": 0}
 
@@ -479,6 +479,93 @@ class CliForceRefreshTests(unittest.TestCase):
 
         self.assertFalse(captured["force_refresh"],
                          "force_refresh must default to False without --force-refresh")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# WR-02: --no-auto-fetch flag threads auto_fetch=False to run_populate / run_query
+# ─────────────────────────────────────────────────────────────────────────────
+
+class CliNoAutoFetchTests(unittest.TestCase):
+    """WR-02: --no-auto-fetch flag on populate and query subparsers forwards auto_fetch=False."""
+
+    def test_populate_no_auto_fetch_flag_forwards_false(self):
+        """--no-auto-fetch on populate passes auto_fetch=False to run_populate."""
+        captured = {}
+
+        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir,
+                               force, force_refresh=False, auto_fetch=True):
+            captured["auto_fetch"] = auto_fetch
+            return {"populated": 0, "skipped": 0, "empty": 0}
+
+        with patch.object(cli._populate, "run_populate", side_effect=fake_run_populate):
+            exit_code = cli.main(["populate", "--no-auto-fetch", "--raw-dir", "out"])
+
+        self.assertEqual(exit_code, 0)
+        self.assertFalse(
+            captured["auto_fetch"],
+            "--no-auto-fetch must pass auto_fetch=False to run_populate",
+        )
+
+    def test_populate_without_no_auto_fetch_defaults_true(self):
+        """Without --no-auto-fetch, auto_fetch=True is passed to run_populate (default on)."""
+        captured = {}
+
+        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir,
+                               force, force_refresh=False, auto_fetch=True):
+            captured["auto_fetch"] = auto_fetch
+            return {"populated": 0, "skipped": 0, "empty": 0}
+
+        with patch.object(cli._populate, "run_populate", side_effect=fake_run_populate):
+            cli.main(["populate", "--raw-dir", "out"])
+
+        self.assertTrue(
+            captured["auto_fetch"],
+            "auto_fetch must default to True when --no-auto-fetch is absent",
+        )
+
+    def test_query_no_auto_fetch_flag_forwards_false(self):
+        """--no-auto-fetch on query passes auto_fetch=False to run_query."""
+        captured = {}
+
+        def fake_run_query(*, currencies, impacts, start, end, include_no_data, cache_dir,
+                           progress=None, auto_fetch=True, session=None):
+            captured["auto_fetch"] = auto_fetch
+            return pathlib.Path("/tmp/fake.parquet")
+
+        with patch.object(cli._query, "run_query", side_effect=fake_run_query):
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                exit_code = cli.main([
+                    "query",
+                    "--currency", "USD",
+                    "--impact", "high",
+                    "--no-auto-fetch",
+                ])
+
+        self.assertEqual(exit_code, 0)
+        self.assertFalse(
+            captured["auto_fetch"],
+            "--no-auto-fetch must pass auto_fetch=False to run_query",
+        )
+
+    def test_query_without_no_auto_fetch_defaults_true(self):
+        """Without --no-auto-fetch, auto_fetch=True is passed to run_query (default on)."""
+        captured = {}
+
+        def fake_run_query(*, currencies, impacts, start, end, include_no_data, cache_dir,
+                           progress=None, auto_fetch=True, session=None):
+            captured["auto_fetch"] = auto_fetch
+            return pathlib.Path("/tmp/fake.parquet")
+
+        with patch.object(cli._query, "run_query", side_effect=fake_run_query):
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                cli.main(["query", "--currency", "USD", "--impact", "high"])
+
+        self.assertTrue(
+            captured["auto_fetch"],
+            "auto_fetch must default to True when --no-auto-fetch is absent",
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

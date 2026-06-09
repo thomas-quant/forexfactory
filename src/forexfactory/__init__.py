@@ -65,8 +65,11 @@ def populate(
 ) -> dict:
     """Populate or refresh the local cache; library mirror of the populate CLI command.
 
-    With force_refresh=False (default): reads on-disk raw JSON and builds parquet
-    (zero network calls). Returns {"populated": N, "skipped": N, "empty": N}.
+    With force_refresh=False (default): reads on-disk raw JSON and builds parquet.
+    With auto_fetch=True (default): also auto-refreshes matured months over the
+    network before the disk-ingest loop (CACHE-05).  Pass auto_fetch=False for
+    strict cache-only behavior (zero network calls).
+    Returns {"populated": N, "skipped": N, "empty": N}.
 
     With force_refresh=True: re-scrapes the requested range over the network and
     overwrites existing cached parquets (CACHE-06 / D-03). Returns
