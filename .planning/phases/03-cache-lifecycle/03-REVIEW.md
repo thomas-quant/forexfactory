@@ -19,8 +19,21 @@ findings:
   warning: 3
   info: 2
   total: 6
-status: issues_found
+status: remediated
+remediation:
+  fixed: [CR-01, WR-01, WR-02, WR-03]
+  deferred: [IN-01, IN-02]
+  commits:
+    - "7972cf8 fix(03): CR-01 union manifest scope before force-refresh rebuild in run_refresh"
+    - "b1e0dc8 fix(03): WR-01 derive force-refresh range from manifest months when start/end unset"
+    - "19c8cc9 fix(03): WR-02 reconcile stale zero-network-calls docs and add --no-auto-fetch CLI flag"
+    - "d56ed12 fix(03): WR-03 forward injected session to run_refresh on populate force-refresh path"
+  test_count: 169
 ---
+
+> **Remediation (2026-06-09):** CR-01 + WR-01/WR-02/WR-03 fixed in the four commits above
+> (suite 162 → 169 passing). IN-01/IN-02 (refactor-only) deferred. See per-commit diffs.
+
 
 # Phase 3: Code Review Report
 
