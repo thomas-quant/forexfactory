@@ -5,12 +5,14 @@ Covers: D-07 (returns Path to consolidated parquet), D-08 (deterministic path,
         overwritten each call), D-09 (out-of-scope raises ValueError with guidance),
         SC4 (forexfactory.get() returns Path), DATA-01 (correct columns).
 """
+import math
 import pathlib
 import tempfile
 import time
 import unittest
 from datetime import date
 from pathlib import Path
+from unittest.mock import patch
 
 import pandas as pd
 
@@ -603,13 +605,10 @@ class QueryAutoFetchTests(unittest.TestCase):
                     cache_dir=cache_dir,
                     auto_fetch=True,
                     session=object(),
-                    between_pages_delay=0.0,
-                    retry_delay=0.0,
                 )
 
             df = pd.read_parquet(result_path)
             self.assertGreater(len(df), 0)
-            import math
             self.assertFalse(
                 math.isnan(df.iloc[0]["actual"]),
                 "query with auto_fetch=True must surface the re-fetched actual value (SC2)",
@@ -660,8 +659,6 @@ class QueryAutoFetchTests(unittest.TestCase):
                     cache_dir=cache_dir,
                     auto_fetch=True,
                     session=object(),
-                    between_pages_delay=0.0,
-                    retry_delay=0.0,
                     progress=record_progress,
                 )
 
