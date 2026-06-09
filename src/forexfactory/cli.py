@@ -93,7 +93,11 @@ def main(argv: list[str] | None = None) -> int:
     # ── populate ─────────────────────────────────────────────────────────────
     pop = subparsers.add_parser(
         "populate",
-        help="Build the parquet cache from on-disk raw JSON files (zero network calls)",
+        help=(
+            "Build the parquet cache from on-disk raw JSON files. "
+            "By default auto-refreshes matured months over the network (CACHE-05); "
+            "use --no-auto-fetch for strict cache-only behavior."
+        ),
     )
     pop.add_argument(
         "--currency", dest="currency", action="append", metavar="CURRENCY",
@@ -136,6 +140,15 @@ def main(argv: list[str] | None = None) -> int:
             "Re-scrape the requested range over the network and overwrite cached parquets. "
             "Distinct from --force (which re-processes on-disk raw JSON without network) "
             "[CACHE-06 / D-01]"
+        ),
+    )
+    pop.add_argument(
+        "--no-auto-fetch",
+        action="store_true",
+        default=False,
+        help=(
+            "Disable automatic matured-month re-fetch (CACHE-05). "
+            "Strict cache-only mode: zero network calls on the disk-ingest path [D-09]."
         ),
     )
 
@@ -225,6 +238,15 @@ def main(argv: list[str] | None = None) -> int:
         default=False,
         help="Include speech/no-data events (default: data-bearing + holidays only) [D-09]",
     )
+    qry.add_argument(
+        "--no-auto-fetch",
+        action="store_true",
+        default=False,
+        help=(
+            "Disable automatic matured-month re-fetch and scope-miss auto-widen. "
+            "Strict cache-only mode — raises on scope miss instead of fetching [D-07/D-09]."
+        ),
+    )
 
     args = parser.parse_args(argv)
 
@@ -266,6 +288,7 @@ def main(argv: list[str] | None = None) -> int:
             cache_dir=cache_dir,
             force=args.force,
             force_refresh=args.force_refresh,
+            auto_fetch=not args.no_auto_fetch,  # D-09: --no-auto-fetch → strict cache-only
         )
         if args.force_refresh:
             # D-04: force-refresh returns fetched/skipped/failed
@@ -291,6 +314,7 @@ def main(argv: list[str] | None = None) -> int:
                 include_no_data=args.include_no_data,
                 cache_dir=cache_dir,
                 progress=_print_progress,  # D-11/D-12: banner fires before [N/total] log lines
+                auto_fetch=not args.no_auto_fetch,  # D-09: --no-auto-fetch → strict cache-only
             )
         except AutoFetchError as exc:
             # D-06: auto-widen failed — print error to stderr, exit non-zero (not a traceback)

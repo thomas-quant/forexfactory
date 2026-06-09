@@ -3,7 +3,11 @@ Populate Cache from On-Disk Raw JSON
 =====================================
 Ingests the existing per-month days_*.json files from the raw input directory
 into per-month parquet files under the cache, recording scope + provenance in
-manifest.json. Makes ZERO network calls (SC2).
+manifest.json.
+
+With auto_fetch=True (default): auto-refreshes matured months over the network
+before the disk-ingest loop (CACHE-05 / D-08).  Use auto_fetch=False for strict
+cache-only behavior with zero network calls.
 
 Usage:
     from forexfactory._populate import run_populate
@@ -119,7 +123,11 @@ def run_populate(
     auto_fetch: bool = True,
     session=None,
 ) -> dict:
-    """Populate the cache from on-disk raw JSON files. Makes zero network calls.
+    """Populate the cache from on-disk raw JSON files.
+
+    With auto_fetch=True (default), auto-refreshes matured months over the network
+    before the disk-ingest loop (CACHE-05 / D-08).  Pass auto_fetch=False for strict
+    cache-only behavior (no automatic network activity).
 
     Args:
         currencies: Currency filter list (default: ["USD"] — D-04).
@@ -141,8 +149,9 @@ def run_populate(
                        avoid silently narrowing previously-cached months' parquets
                        (D-01/D-03/D-04). Default False preserves disk-ingest behavior.
         auto_fetch: When True (default), auto-refresh matured months before the
-                    disk-ingest loop (CACHE-05 / D-08). Suppressed by auto_fetch=False
-                    (D-09) or when force_refresh=True (which handles its own scope).
+                    disk-ingest loop (CACHE-05 / D-08).  When False, strict cache-only
+                    mode — no automatic network activity (D-09).  Suppressed automatically
+                    when force_refresh=True (that path handles its own network activity).
         session: HTTP session to inject into the matured re-fetch (default: built lazily).
 
     Returns:
