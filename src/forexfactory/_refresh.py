@@ -7,7 +7,8 @@ via ``_populate.build_month_parquet``, and records provenance in manifest.json.
 
 Supports force-refresh (CACHE-06 / D-02): force_refresh=True re-scrapes and
 overwrites already-cached months on demand.
-No auto-maturity (CACHE-05, Phase 3).
+Implements auto-maturity (CACHE-05, Phase 3): refresh_matured_months() detects
+months stored with settled:false that have since fully matured and re-fetches them.
 
 Default range (D-11 / Claude's Discretion): gap-fill from the month following
 the latest raw JSON already on disk through the current calendar month.
@@ -168,6 +169,92 @@ def run_refresh(
         fetched_count, skipped_count, failed_count,
     )
     return {"fetched": fetched_count, "skipped": skipped_count, "failed": failed_count}
+
+
+def refresh_matured_months(
+    cache_dir,
+    *,
+    session=None,
+    between_pages_delay: float | None = None,
+    retry_delay: float | None = None,
+) -> dict:
+    """Re-fetch all manifest months with settled:false that have since fully matured (CACHE-05).
+
+    Reads the manifest scope once and re-fetches every matured month at that FULL scope so
+    the rebuilt parquet retains all previously-cached currencies/impacts.  All matured months
+    are refreshed in a single call — there is no per-call cap (D-08).
+
+    On per-month failure (run_refresh reports fetched==0 or failed>0, or raises): emits
+    exactly one logger.warning naming the month and continues — the stale parquet (which
+    has valid forecast values) is served as-is (D-10 deliberate fail-open).  Never raises.
+
+    Callers gate this helper via auto_fetch; this function itself has no auto_fetch guard.
+
+    Returns:
+        dict with keys: matured (int), refreshed (int), failed (int).
+    """
+    resolved_cache = _cache.resolve_cache_dir(cache_dir)
+    _cache.ensure_dirs(resolved_cache)
+
+    manifest = _cache.read_manifest(resolved_cache)
+    scope = manifest.get("scope", {})
+    scope_currencies = scope.get("currencies") or DEFAULT_CURRENCIES
+    scope_impacts = scope.get("impacts") or DEFAULT_IMPACTS
+
+    # Collect months with settled=False that now pass _is_settled() (D-08 — no cap)
+    matured_keys = []
+    for month_key, entry in manifest.get("months", {}).items():
+        if entry.get("settled"):
+            continue  # already settled — skip
+        try:
+            year_str, month_str = month_key.split("-")
+            anchor = date(int(year_str), int(month_str), 1)
+        except (ValueError, AttributeError):
+            continue
+        if _is_settled(anchor):
+            matured_keys.append(month_key)
+
+    if not matured_keys:
+        return {"matured": 0, "refreshed": 0, "failed": 0}
+
+    matured_count = len(matured_keys)
+    refreshed_count = 0
+    failed_count = 0
+
+    for month_key in matured_keys:
+        try:
+            result = run_refresh(
+                currencies=scope_currencies,
+                impacts=scope_impacts,
+                start=month_key,
+                end=month_key,
+                cache_dir=resolved_cache,
+                session=session,
+                between_pages_delay=between_pages_delay,
+                retry_delay=retry_delay,
+                force_refresh=True,
+            )
+            # D-10: fetched==0 or failed>0 means the re-scrape did not succeed
+            if result.get("fetched", 0) == 0 or result.get("failed", 0) > 0:
+                logger.warning(
+                    "[matured] re-fetch failed for %s — serving stale cached parquet",
+                    month_key,
+                )
+                failed_count += 1
+            else:
+                refreshed_count += 1
+        except Exception:  # noqa: BLE001 — D-10: never raise; serve stale
+            logger.warning(
+                "[matured] re-fetch failed for %s — serving stale cached parquet",
+                month_key,
+            )
+            failed_count += 1
+
+    logger.info(
+        "[matured] done — matured=%d refreshed=%d failed=%d",
+        matured_count, refreshed_count, failed_count,
+    )
+    return {"matured": matured_count, "refreshed": refreshed_count, "failed": failed_count}
 
 
 # ---------------------------------------------------------------------------
