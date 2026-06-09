@@ -24,6 +24,7 @@ import sys
 from pathlib import Path
 
 from forexfactory import _populate, _query, _refresh, _scrape
+from forexfactory._exceptions import AutoFetchError
 
 # ====== CONFIG ======
 # No standalone constants — CLI arg defaults derive from the service modules.
@@ -50,7 +51,9 @@ def _print_progress(event: str, **kwargs) -> None:
     """
     if event == "matured":
         print(f"{kwargs['count']} months matured since last run — refreshing actuals...")
-    # "scope_miss" branch will be added in 03-03 (CACHE-03)
+    elif event == "scope_miss":
+        # D-12: scope-miss banner printed before per-month [N/total] progress lines
+        print(f"{kwargs['currency']}/{kwargs['impact']} not in cache — fetching now...")
 
 
 # ---------------------------------------------------------------------------
@@ -289,8 +292,12 @@ def main(argv: list[str] | None = None) -> int:
                 cache_dir=cache_dir,
                 progress=_print_progress,  # D-11/D-12: banner fires before [N/total] log lines
             )
+        except AutoFetchError as exc:
+            # D-06: auto-widen failed — print error to stderr, exit non-zero (not a traceback)
+            print(str(exc), file=sys.stderr)
+            sys.exit(1)
         except ValueError as exc:
-            # D-09: out-of-scope query — print guidance to stderr, exit non-zero
+            # D-09/D-07: out-of-scope query with auto_fetch=False — print guidance to stderr
             print(str(exc), file=sys.stderr)
             sys.exit(1)
 

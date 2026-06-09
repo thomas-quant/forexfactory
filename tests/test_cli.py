@@ -591,3 +591,131 @@ class CliMaturedBannerTests(unittest.TestCase):
         self.assertEqual(len(non_empty), 1,
                          "no banner when no matured months — exactly one stdout line (D-10)")
         self.assertEqual(non_empty[0], str(fake_path))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CACHE-03 / D-11/D-12: CLI scope-miss banner and AutoFetchError handling
+# ─────────────────────────────────────────────────────────────────────────────
+
+_EUR_MEDIUM_DAYS_WITH_DATA = [
+    {
+        "events": [
+            {
+                "currency": "EUR",
+                "impactName": "Medium Impact Expected",
+                "name": "ECB Rate Decision",
+                "dateline": 1746057600,
+                "id": "ecb-1",
+                "leaked": False,
+                "hasDataValues": True,
+            },
+            {
+                "currency": "USD",
+                "impactName": "High Impact Expected",
+                "name": "CPI y/y",
+                "dateline": 1746057600,
+                "id": "cpi-1",
+                "leaked": False,
+                "hasDataValues": True,
+            },
+        ]
+    }
+]
+
+
+class CliScopeMissBannerTests(unittest.TestCase):
+    """CACHE-03 / D-11/D-12: CLI query prints the scope-miss banner and handles AutoFetchError."""
+
+    def _seed_usd_high_cache(self, cache_dir: pathlib.Path) -> None:
+        """Seed a USD/high-only cache with one month (2026-05)."""
+        from forexfactory import _cache, _populate
+        from datetime import date
+
+        _cache.ensure_dirs(cache_dir)
+        anchor = date(2026, 5, 1)
+        usd_days = [{"events": [{
+            "currency": "USD",
+            "impactName": "High Impact Expected",
+            "name": "CPI y/y",
+            "dateline": 1746057600,
+            "id": "cpi-1",
+            "leaked": False,
+            "hasDataValues": True,
+        }]}]
+        _populate.build_month_parquet(
+            cache_dir, anchor, usd_days,
+            currencies=["USD"], impacts=["high", "holiday"],
+        )
+        _cache.write_manifest(cache_dir, {
+            "scope": {"currencies": ["USD"], "impacts": ["high", "holiday"]},
+            "months": {
+                "2026-05": {"scraped_at": "2026-01-01T00:00:00Z", "settled": True},
+            },
+        })
+
+    def test_scope_miss_banner_printed_before_path(self):
+        """D-12: CLI query prints scope-miss banner to stdout before the parquet path line."""
+        from forexfactory import _scrape
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = pathlib.Path(tmpdir) / "cache"
+            self._seed_usd_high_cache(cache_dir)
+
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                with patch.object(_scrape, "scrape_month",
+                                  return_value=_EUR_MEDIUM_DAYS_WITH_DATA):
+                    cli.main([
+                        "query",
+                        "--currency", "EUR",
+                        "--impact", "medium",
+                        "--cache-dir", str(cache_dir),
+                    ])
+
+            output = buf.getvalue()
+            lines = [ln.strip() for ln in output.splitlines() if ln.strip()]
+
+            # Must contain the D-12 scope-miss banner
+            banner_lines = [ln for ln in lines if "not in cache" in ln]
+            self.assertEqual(len(banner_lines), 1,
+                             f"D-12 scope-miss banner must appear once on stdout; got: {output!r}")
+            self.assertIn("EUR/medium not in cache — fetching now...", banner_lines[0])
+
+            # Final line must be the absolute parquet path
+            last_line = lines[-1]
+            result_path = pathlib.Path(last_line)
+            self.assertTrue(result_path.is_absolute(),
+                            "last stdout line must be an absolute path")
+            self.assertTrue(result_path.exists(),
+                            "result parquet path must exist on disk")
+
+    def test_auto_fetch_failure_exits_code_1_with_stderr(self):
+        """D-06: failed auto-widen exits code 1 and prints AutoFetchError to stderr (not stdout)."""
+        from forexfactory import _scrape
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = pathlib.Path(tmpdir) / "cache"
+            self._seed_usd_high_cache(cache_dir)
+
+            buf_out = io.StringIO()
+            buf_err = io.StringIO()
+            with contextlib.redirect_stdout(buf_out):
+                with contextlib.redirect_stderr(buf_err):
+                    with self.assertRaises(SystemExit) as cm:
+                        with patch.object(_scrape, "scrape_month", return_value=[]):
+                            cli.main([
+                                "query",
+                                "--currency", "EUR",
+                                "--impact", "medium",
+                                "--cache-dir", str(cache_dir),
+                            ])
+
+            self.assertEqual(cm.exception.code, 1,
+                             "failed auto-widen must exit with code 1")
+            # Error must appear on stderr, NOT stdout
+            self.assertGreater(len(buf_err.getvalue().strip()), 0,
+                               "error text must appear on stderr")
+            self.assertEqual(len([
+                ln for ln in buf_out.getvalue().splitlines() if ln.strip()
+                and "not in cache" not in ln  # banner may appear before the error
+            ]), 0, "no parquet path line must appear on stdout when auto-widen fails")
