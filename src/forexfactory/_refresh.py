@@ -5,7 +5,8 @@ Fetches months NOT yet cached over the network (via forexfactory._scrape),
 stages raw JSON under the cache ``raw/`` directory, builds per-month parquet
 via ``_populate.build_month_parquet``, and records provenance in manifest.json.
 
-Does NOT overwrite already-cached months (force-refresh is Phase 3 / CACHE-06).
+Supports force-refresh (CACHE-06 / D-02): force_refresh=True re-scrapes and
+overwrites already-cached months on demand.
 No auto-maturity (CACHE-05, Phase 3).
 
 Default range (D-11 / Claude's Discretion): gap-fill from the month following
@@ -51,6 +52,7 @@ def run_refresh(
     session=None,
     between_pages_delay: float | None = None,
     retry_delay: float | None = None,
+    force_refresh: bool = False,
 ) -> dict:
     """Fetch months not yet cached over the network; stage raw + build parquet.
 
@@ -63,6 +65,12 @@ def run_refresh(
         session: curl_cffi session to inject (default: build_session() is called).
         between_pages_delay: Seconds between page fetches (default: _scrape.BETWEEN_PAGES_DELAY).
         retry_delay: Seconds before retrying a failed month (default: _scrape.RETRY_DELAY).
+        force_refresh: When True, bypass the skip-if-cached check and re-scrape months
+                       that already have non-empty raw JSON, overwriting both the staged
+                       raw file and the per-month parquet. Distinct from _populate's
+                       ``force`` param (which re-processes raw JSON without network) — this
+                       issues live network requests (CACHE-06 / D-02). Default False
+                       preserves the existing gap-fill skip behavior.
 
     Returns:
         dict with keys: fetched (int), skipped (int), failed (int).
@@ -107,7 +115,8 @@ def run_refresh(
         # D-11 skip: month with existing non-empty raw JSON is not re-fetched.
         # An empty file from a previous QUAL-03-violating run is treated as
         # absent (size == 0 → re-fetch).
-        if raw_path.exists() and raw_path.stat().st_size > 0:
+        # When force_refresh=True the skip is bypassed (CACHE-06 / D-02).
+        if not force_refresh and raw_path.exists() and raw_path.stat().st_size > 0:
             logger.info("[%d/%d] Skip (cached): %s", i, total, month_key)
             skipped_count += 1
             continue
