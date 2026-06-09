@@ -181,6 +181,16 @@ def run_populate(
         effective_impacts = sorted(
             set(impacts) | set(existing_scope.get("impacts", []))
         )
+        # WR-01: When start/end are unset, derive the full range from cached manifest
+        # months (min..max of months keys) so force-refresh re-scrapes the entire
+        # cached span rather than collapsing to the current month via gap-fill.
+        # If the manifest has no months, keep start/end as-is (current-month fallback
+        # inside _compute_date_range is still appropriate for a fresh cache).
+        if start is None and end is None:
+            month_keys = sorted(manifest.get("months", {}).keys())
+            if month_keys:
+                start, end = month_keys[0], month_keys[-1]
+
         return _refresh.run_refresh(
             currencies=effective_currencies,
             impacts=effective_impacts,

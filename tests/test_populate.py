@@ -908,6 +908,49 @@ class PopulateForceRefreshTests(unittest.TestCase):
             self.assertIn("skipped", result, "forexfactory.populate must return 'skipped' key")
             self.assertIn("failed", result, "forexfactory.populate must return 'failed' key")
 
+    def test_force_refresh_no_range_covers_full_cached_span(self):
+        """WR-01: force_refresh=True with no start/end re-scrapes the full cached span, not just the current month."""
+        from forexfactory import _populate, _scrape, _cache
+
+        scrape_calls = []
+
+        def counting_scrape(session, page, *, retry_delay):
+            scrape_calls.append(page.anchor)
+            return [{"events": [self._usd_high_event()]}]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            cache_dir.mkdir()
+            _cache.ensure_dirs(cache_dir)
+
+            # Seed a two-month cache spanning 2026-03 to 2026-04.
+            for year, month in [(2026, 3), (2026, 4)]:
+                anchor = date(year, month, 1)
+                _cache.update_manifest_month(
+                    cache_dir, anchor,
+                    scraped_at="2026-01-01T00:00:00Z",
+                    settled=True,
+                    currencies=["USD"],
+                    impacts=["high", "holiday"],
+                )
+
+            with patch.object(_scrape, "scrape_month", side_effect=counting_scrape), \
+                 patch.object(_scrape, "build_session", return_value=object()):
+                _populate.run_populate(
+                    force_refresh=True,
+                    cache_dir=cache_dir,
+                )
+
+            # Must have scraped BOTH cached months, not just the current month.
+            self.assertIn(
+                date(2026, 3, 1), scrape_calls,
+                "WR-01: force_refresh with no range must re-scrape 2026-03 (start of cached span)",
+            )
+            self.assertIn(
+                date(2026, 4, 1), scrape_calls,
+                "WR-01: force_refresh with no range must re-scrape 2026-04 (end of cached span)",
+            )
+
     def test_force_refresh_signature_in_run_populate(self):
         """run_populate() has a 'force_refresh' keyword-only parameter (D-03)."""
         import inspect
