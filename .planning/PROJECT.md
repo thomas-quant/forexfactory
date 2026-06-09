@@ -43,15 +43,24 @@ A pip-installable Python package that scrapes the [Forex Factory](https://www.fo
 - ✓ FF `apply-settings` endpoint investigated; documented **NOT-ADOPTED** decision (HTML parse stays primary; `/calendar/more` validated JSON fallback; `/calendar/graph` filed as future enhancement) — SRC-01
 - ✓ Cache rebuilt to `schema_version "2"` across all 195 months (zero re-scrape); raw JSON staging layer dropped per the locked D-03 exit condition
 
+**Shipped in Phase 3 — Cache Lifecycle (2026-06-09):**
+
+- ✓ Scope-miss auto-widen: a `query`/`get()` for an uncached currency/impact combo auto-fetches the full missing scope and permanently widens the cache, no manual `populate` step (`widen_scope_to_cover`, full cached-range union scope); failure raises `AutoFetchError` (fail-closed, no partial data) — CACHE-03 (D-05/D-06)
+- ✓ Matured-month auto-refresh: `settled:false` months that have fully matured auto re-fetch on the next `populate`/`query` to fill in `actual` values; re-fetch failure serves the stale forecast-only parquet and warns (never crashes) — CACHE-05 (D-08/D-10)
+- ✓ Single `auto_fetch` knob (default `True`) suppresses BOTH auto-triggers for strict cache-only reads; exposed as `get(auto_fetch=…)`/`populate(auto_fetch=…)` and CLI `--no-auto-fetch` on `populate`/`query` — CACHE-05 (D-07/D-09)
+- ✓ Force-refresh on demand: `--force-refresh` on `populate` and `refresh` (and `force_refresh=` library kwarg + new `forexfactory.populate()`) re-scrapes a range over the network and overwrites cached parquets, bypassing skip-if-cached; partial failures keep prior parquets and report `fetched/skipped/failed` — CACHE-06 (D-01/D-02/D-03/D-04)
+- ✓ CLI auto-fetch progress banners (scope-miss + matured) print from `cli.py` only; the library stays stdout-silent (D-11/D-12)
+- ✓ Code review (quick) found + remediated a critical data-loss bug (CR-01: `refresh --force-refresh` at a subset scope silently narrowed cached parquets) plus 3 warnings; force-refresh now unions manifest scope before rebuild — see `03-REVIEW.md`. Suite at 169 tests.
+
 ### Active
 
 <!-- This milestone: turn the toolkit into a cached, packaged data provider. Hypotheses until shipped. -->
 
 **Packaging & interfaces** — ✓ all shipped in Phase 1 (see Validated above)
 
-**Cache** (remaining for later phases)
-- [ ] When a query exceeds the cached scope, auto-fetch the missing data and widen the cache — Phase 3 (Phase 1 errors with guidance instead)
-- [ ] Future-dated months auto-refresh once the whole month has passed, to fill in `actual` values (forecast-only events mature into expected-vs-surprise) — Phase 3
+**Cache** — ✓ all shipped (Phase 1 populate/query + Phase 3 lifecycle)
+- [x] When a query exceeds the cached scope, auto-fetch the missing data and widen the cache — ✓ Phase 3 (CACHE-03, D-05/D-06)
+- [x] Future-dated months auto-refresh once the whole month has passed, to fill in `actual` values (forecast-only events mature into expected-vs-surprise) — ✓ Phase 3 (CACHE-05, D-08/D-10)
 
 **Data schema** — ✓ all shipped (Phase 1 core + Phase 2 values/surprise/identity)
 - [x] Core fields: `datetime_utc`, `currency`, `impact`, `title`, `id`, `leaked` — ✓ Phase 1
@@ -67,7 +76,7 @@ A pip-installable Python package that scrapes the [Forex Factory](https://www.fo
 - [x] Fix `--in-dir` silent no-op in full-pipeline mode — ✓ Phase 1
 - [x] Stop writing empty JSON on failed scrapes (no permanent skip-poisoning) — ✓ Phase 1
 - [x] Replace stale hardcoded date defaults with sensible/explicit behavior — ✓ Phase 1
-- [ ] Add a force-refresh / re-scrape capability — Phase 3
+- [x] Add a force-refresh / re-scrape capability — ✓ Phase 3 (CACHE-06: `--force-refresh` + `force_refresh=` kwarg)
 - [x] Add fixture-based tests for the fragile `calendarComponentStates` parser — ✓ Phase 2 (QUAL-05)
 
 ### Out of Scope
@@ -98,8 +107,8 @@ A pip-installable Python package that scrapes the [Forex Factory](https://www.fo
 |----------|-----------|---------|
 | Distribution model: cached data provider, not a bundled dataset or pure tooling lib | Fetch once, reuse across projects; data isn't shipped in the package | ✓ Phase 1 |
 | Cache stored as parquet, shared user cache dir (configurable) | One machine-wide cache serves all projects; parquet is the read format anyway | ✓ Phase 1 (per-month parquet + manifest) |
-| Cache scope configurable at populate time; auto-widen on out-of-scope query | Avoid caching everything up front, but never block a legitimate request | Partial — populate-time scope ✓ Phase 1; auto-widen → Phase 3 (Phase 1 errors with guidance) |
-| Freshness: manual for settled history; auto-refresh only matured future months | Past is immutable; only future-dated forecasts need to mature into actuals | Partial — manual settled ✓ Phase 1; matured auto-refresh → Phase 3 |
+| Cache scope configurable at populate time; auto-widen on out-of-scope query | Avoid caching everything up front, but never block a legitimate request | ✓ populate-time scope Phase 1; ✓ auto-widen Phase 3 (CACHE-03, raise `AutoFetchError` on fetch failure) |
+| Freshness: manual for settled history; auto-refresh only matured future months | Past is immutable; only future-dated forecasts need to mature into actuals | ✓ manual settled Phase 1; ✓ matured auto-refresh Phase 3 (CACHE-05, serve-stale-on-failure) |
 | Schema: core + values (raw+parsed) + FF surprise flags + `ebaseId` | Supports expected-vs-surprise and joining a metric's release history | ✓ core fields Phase 1; values/surprise/identity Phase 2 (schema_version "2") |
 | Library main call returns a parquet path (not a DataFrame) | Consistent with the parquet cache contract; caller loads as needed | ✓ Phase 1 (`forexfactory.get() -> Path`) |
 | Investigate FF JSON/POST endpoint (SRC-01) — NOT ADOPTED (SC5): apply-settings is settings-save only; `/calendar/more` validated clean-JSON fallback (clears all 4 D-06 criteria) but append-paginated so HTML `?month=` GET stays bulk primary; `/calendar/graph` filed as high-value future enhancement (numeric per-event time-series) | Reduce reliance on the fragile char-by-char JS parser; HTML `?month=` parse wins ergonomically (1 request/month vs 4–5 weekly POSTs for `/calendar/more`) | NOT ADOPTED — Phase 2 (SRC-01 spike, 2026-06-08) |
@@ -123,4 +132,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-08 — Phase 2 (Full Analytical Schema + Source Spike) complete: parquet schema_version "2" with raw+parsed value fields, surprise/identity fields, `hasDataValues` + `--include-no-data`; fixture-protected parser (QUAL-05); SRC-01 spike resolved NOT-ADOPTED (HTML parse primary; `/calendar/more` JSON fallback, `/calendar/graph` future enhancement); cache rebuilt across 195 months, raw JSON staging dropped (D-03). Next: Phase 3 — cache lifecycle (auto-widen, matured-month auto-refresh, force-refresh).*
+*Last updated: 2026-06-09 — Phase 3 (Cache Lifecycle) complete: the cache now self-manages — scope-miss auto-widen (CACHE-03, raises `AutoFetchError` on failure), matured-month auto-refresh (CACHE-05, serve-stale-on-failure), single `auto_fetch` knob + `--no-auto-fetch`, and force-refresh on demand (CACHE-06: `--force-refresh` / `force_refresh=` + `forexfactory.populate()`). Code review caught + fixed a critical force-refresh scope-narrowing data-loss bug (CR-01). Suite at 169 tests. This is the final phase of milestone v1.0 — all CACHE/PKG/DATA/SRC/QUAL requirements shipped. Next: `/gsd-complete-milestone` to archive v1.0.*
