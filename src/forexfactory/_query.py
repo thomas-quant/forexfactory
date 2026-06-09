@@ -14,6 +14,7 @@ import logging
 import re
 from datetime import date
 from pathlib import Path
+from typing import Callable
 
 import pandas as pd
 
@@ -112,6 +113,9 @@ def run_query(
     end: str | None = None,
     include_no_data: bool = False,
     cache_dir: Path | None = None,
+    auto_fetch: bool = True,
+    session=None,
+    progress: Callable | None = None,
 ) -> Path:
     """Read per-month cache parquets, filter, write and return a consolidated result parquet.
 
@@ -119,8 +123,15 @@ def run_query(
     <cache_dir>/queries/.  The path is deterministic (keyed by filter
     parameters) and overwritten on every call (D-07 / D-08).
 
+    Args:
+        auto_fetch: When True (default), auto-refresh matured months before reading
+                    (CACHE-05 / D-08). When False, strict cache-only read (D-07/D-09).
+        session: curl_cffi session to inject into the matured re-fetch (default: built lazily).
+        progress: Optional callable(event, **kwargs) invoked when an auto-fetch is about
+                  to occur, so the CLI can print a D-12 banner before fetch progress lines.
+
     Raises ValueError when the manifest scope does not cover the request (D-09).
-    All diagnostics go to logging, never to stdout (D-10).
+    All diagnostics go to logging, never to stdout (D-10/D-11).
     """
     # Apply defaults (D-04 — consistent with populate defaults)
     if currencies is None:
@@ -133,6 +144,32 @@ def run_query(
 
     manifest = _cache.read_manifest(cache_dir)
     scope = manifest.get("scope", {})
+
+    # CACHE-05: auto-refresh matured months BEFORE the scope check (D-08/D-09).
+    # Runs only when auto_fetch=True; suppressed by auto_fetch=False (D-07/D-09).
+    if auto_fetch:
+        from forexfactory import _refresh  # noqa: PLC0415 — lazy to avoid circular import
+
+        # Count matured months to drive the D-12 progress banner (must fire BEFORE fetch)
+        matured_count = 0
+        for mk, entry in manifest.get("months", {}).items():
+            if not entry.get("settled"):
+                try:
+                    year_str, mon_str = mk.split("-")
+                    anchor = date(int(year_str), int(mon_str), 1)
+                    if _refresh._is_settled(anchor):
+                        matured_count += 1
+                except (ValueError, AttributeError):
+                    pass
+
+        if matured_count > 0:
+            # D-12: CLI banner fires before the [N/total] per-month log lines
+            if progress is not None:
+                progress("matured", count=matured_count)
+            _refresh.refresh_matured_months(cache_dir, session=session)
+            # Re-read so subsequent scope check and parquet loop see refreshed state
+            manifest = _cache.read_manifest(cache_dir)
+            scope = manifest.get("scope", {})
 
     # D-09: scope check — raise before any parquet reads if the request is not covered.
     if not scope or not _cache._scope_covers(scope, currencies, impacts):

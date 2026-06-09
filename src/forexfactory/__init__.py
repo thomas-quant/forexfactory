@@ -26,8 +26,14 @@ def get(
     end=None,
     include_no_data=False,
     cache_dir=None,
+    auto_fetch: bool = True,
 ) -> Path:
     """Return a Path to a filtered Parquet file from the local cache.
+
+    Args:
+        auto_fetch: When True (default), auto-refresh matured months and widen scope
+                    on miss before returning (CACHE-05 / D-07/D-09). When False, strict
+                    cache-only read — raises ValueError on scope miss or stale data.
 
     Lazily imports _query so that `import forexfactory` works before
     _query.py exists (it is implemented in plan 04).
@@ -40,6 +46,8 @@ def get(
         end=end,
         include_no_data=include_no_data,
         cache_dir=cache_dir,
+        auto_fetch=auto_fetch,
+        # session and progress are not exposed at the library level (D-11 — library silent)
     )
 
 
@@ -53,6 +61,7 @@ def populate(
     cache_dir=None,
     force=False,
     force_refresh=False,
+    auto_fetch: bool = True,
 ) -> dict:
     """Populate or refresh the local cache; library mirror of the populate CLI command.
 
@@ -62,6 +71,11 @@ def populate(
     With force_refresh=True: re-scrapes the requested range over the network and
     overwrites existing cached parquets (CACHE-06 / D-03). Returns
     {"fetched": N, "skipped": N, "failed": N}.
+
+    Args:
+        auto_fetch: When True (default), auto-refresh matured months before the
+                    disk-ingest loop (CACHE-05 / D-08/D-09). When False, strict
+                    cache-only — no automatic network activity.
     """
     from . import _populate  # noqa: PLC0415 — intentional lazy import
     kwargs = dict(
@@ -72,6 +86,7 @@ def populate(
         cache_dir=cache_dir,
         force=force,
         force_refresh=force_refresh,
+        auto_fetch=auto_fetch,
     )
     if raw_dir is not None:
         kwargs["raw_dir"] = raw_dir

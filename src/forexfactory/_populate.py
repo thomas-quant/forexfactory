@@ -116,6 +116,8 @@ def run_populate(
     cache_dir: Path | None = None,
     force: bool = False,
     force_refresh: bool = False,
+    auto_fetch: bool = True,
+    session=None,
 ) -> dict:
     """Populate the cache from on-disk raw JSON files. Makes zero network calls.
 
@@ -138,6 +140,10 @@ def run_populate(
                        effective scope is unioned with the existing manifest scope to
                        avoid silently narrowing previously-cached months' parquets
                        (D-01/D-03/D-04). Default False preserves disk-ingest behavior.
+        auto_fetch: When True (default), auto-refresh matured months before the
+                    disk-ingest loop (CACHE-05 / D-08). Suppressed by auto_fetch=False
+                    (D-09) or when force_refresh=True (which handles its own scope).
+        session: HTTP session to inject into the matured re-fetch (default: built lazily).
 
     Returns:
         If force_refresh=True: dict with keys fetched (int), skipped (int), failed (int).
@@ -152,6 +158,14 @@ def run_populate(
     # Resolve cache dir and ensure layout exists
     resolved_cache = _cache.resolve_cache_dir(cache_dir)
     _cache.ensure_dirs(resolved_cache)
+
+    # CACHE-05: auto-refresh matured months before disk-ingest (D-08/D-09).
+    # Skipped when force_refresh=True because that path delegates to run_refresh
+    # which handles freshness via its own force_refresh=True skip-bypass (D-08).
+    # No stdout output here — D-11 reserves banners for the CLI query command.
+    if auto_fetch and not force_refresh:
+        from forexfactory import _refresh  # noqa: PLC0415 — lazy to avoid circular import
+        _refresh.refresh_matured_months(resolved_cache, session=session)
 
     # CACHE-06 / D-01: force_refresh short-circuits the disk-ingest loop and
     # delegates to run_refresh(force_refresh=True) for the requested range.
