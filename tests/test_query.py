@@ -266,7 +266,7 @@ class QueryHappyPathTests(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class QueryScopeErrorTests(unittest.TestCase):
-    """Task 2 — D-09: out-of-scope request raises ValueError with populate guidance."""
+    """Task 2 — D-09: out-of-scope request with auto_fetch=False raises ValueError with populate guidance."""
 
     def _setup_usd_high_only(self, cache_dir: Path) -> None:
         """Write a manifest with scope limited to USD/high + holiday."""
@@ -281,7 +281,7 @@ class QueryScopeErrorTests(unittest.TestCase):
         })
 
     def test_out_of_scope_raises_value_error(self):
-        """Requesting EUR/medium when scope is USD/high raises ValueError (D-09)."""
+        """Requesting EUR/medium when scope is USD/high raises ValueError with auto_fetch=False (D-07/D-09)."""
         from forexfactory import _query
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -293,6 +293,7 @@ class QueryScopeErrorTests(unittest.TestCase):
                     currencies=["EUR"],
                     impacts=["medium"],
                     cache_dir=cache_dir,
+                    auto_fetch=False,
                 )
 
     def test_out_of_scope_error_message_contains_populate_command(self):
@@ -308,6 +309,7 @@ class QueryScopeErrorTests(unittest.TestCase):
                     currencies=["EUR"],
                     impacts=["medium"],
                     cache_dir=cache_dir,
+                    auto_fetch=False,
                 )
                 self.fail("Expected ValueError not raised")
             except ValueError as exc:
@@ -318,7 +320,7 @@ class QueryScopeErrorTests(unittest.TestCase):
                 )
 
     def test_out_of_scope_does_not_write_result_file(self):
-        """No result parquet is written when the request is out of scope (D-09)."""
+        """No result parquet is written when the request is out of scope with auto_fetch=False (D-09)."""
         from forexfactory import _query, _cache
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -330,6 +332,7 @@ class QueryScopeErrorTests(unittest.TestCase):
                     currencies=["EUR"],
                     impacts=["medium"],
                     cache_dir=cache_dir,
+                    auto_fetch=False,
                 )
             except ValueError:
                 pass
@@ -339,7 +342,7 @@ class QueryScopeErrorTests(unittest.TestCase):
             self.assertEqual(len(written), 0, "no parquet should be written on scope error")
 
     def test_empty_manifest_raises_value_error(self):
-        """Empty manifest (nothing populated) raises ValueError for any request (D-09)."""
+        """Empty manifest with auto_fetch=False raises ValueError for any request (D-07/D-09)."""
         from forexfactory import _query, _cache
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -352,6 +355,7 @@ class QueryScopeErrorTests(unittest.TestCase):
                     currencies=["USD"],
                     impacts=["high"],
                     cache_dir=cache_dir,
+                    auto_fetch=False,
                 )
 
     def test_error_message_names_missing_currency(self):
@@ -367,12 +371,38 @@ class QueryScopeErrorTests(unittest.TestCase):
                     currencies=["EUR"],
                     impacts=["medium"],
                     cache_dir=cache_dir,
+                    auto_fetch=False,
                 )
                 self.fail("Expected ValueError not raised")
             except ValueError as exc:
                 msg = str(exc)
                 self.assertIn("EUR", msg)
                 self.assertIn("medium", msg)
+
+    def test_auto_fetch_false_makes_zero_network_calls(self):
+        """auto_fetch=False scope miss makes zero network calls (D-07 strict cache-only)."""
+        from forexfactory import _query, _scrape
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            self._setup_usd_high_only(cache_dir)
+
+            scrape_calls = []
+
+            with patch.object(_scrape, "scrape_month",
+                               side_effect=lambda s, p, **kw: scrape_calls.append(p) or []):
+                try:
+                    _query.run_query(
+                        currencies=["EUR"],
+                        impacts=["medium"],
+                        cache_dir=cache_dir,
+                        auto_fetch=False,
+                    )
+                except ValueError:
+                    pass
+
+            self.assertEqual(len(scrape_calls), 0,
+                             "auto_fetch=False must make zero network calls on scope miss")
 
 
 # ---------------------------------------------------------------------------
@@ -717,6 +747,191 @@ class QueryAutoFetchTests(unittest.TestCase):
             )
             self.assertIsInstance(result, Path)
             self.assertTrue(result.exists())
+
+
+# ---------------------------------------------------------------------------
+# CACHE-03: scope-miss auto-widen tests (SC1 / D-05 / D-06 / D-07)
+# ---------------------------------------------------------------------------
+
+def _eur_medium_days():
+    """Scrape fixture returning EUR/medium event data."""
+    return [{"events": [{
+        "currency": "EUR",
+        "impactName": "Medium Impact Expected",
+        "name": "ECB Rate Decision",
+        "dateline": 1746057600,
+        "id": "ecb-1",
+        "leaked": False,
+        "hasDataValues": True,
+    }]}]
+
+
+def _mixed_days_with_eur_medium():
+    """Scrape fixture returning both USD/high and EUR/medium events."""
+    return [{"events": [
+        {
+            "currency": "USD",
+            "impactName": "High Impact Expected",
+            "name": "CPI y/y",
+            "dateline": 1746057600,
+            "id": "cpi-1",
+            "leaked": False,
+            "hasDataValues": True,
+        },
+        {
+            "currency": "EUR",
+            "impactName": "Medium Impact Expected",
+            "name": "ECB Rate Decision",
+            "dateline": 1746057600,
+            "id": "ecb-1",
+            "leaked": False,
+            "hasDataValues": True,
+        },
+    ]}]
+
+
+class QueryScopeMissAutoWidenTests(unittest.TestCase):
+    """CACHE-03 / SC1 / D-05 / D-06: scope-miss auto-widen in run_query."""
+
+    def _setup_usd_high_only_cache(self, cache_dir: Path) -> None:
+        """Seed a USD/high-only cache with one month (2026-05)."""
+        from forexfactory import _cache, _populate
+
+        _cache.ensure_dirs(cache_dir)
+        anchor = date(2026, 5, 1)
+        usd_high_days = [{"events": [{
+            "currency": "USD",
+            "impactName": "High Impact Expected",
+            "name": "CPI y/y",
+            "dateline": 1746057600,
+            "id": "cpi-1",
+            "leaked": False,
+            "hasDataValues": True,
+        }]}]
+        _populate.build_month_parquet(
+            cache_dir, anchor, usd_high_days,
+            currencies=["USD"], impacts=["high", "holiday"],
+        )
+        _cache.write_manifest(cache_dir, {
+            "scope": {"currencies": ["USD"], "impacts": ["high", "holiday"]},
+            "months": {
+                "2026-05": {"scraped_at": "2026-01-01T00:00:00Z", "settled": True},
+            },
+        })
+
+    def test_auto_widen_returns_rows_sc1(self):
+        """run_query(auto_fetch=True) on scope miss auto-widens and returns EUR/medium rows (SC1)."""
+        from forexfactory import _query, _scrape
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            self._setup_usd_high_only_cache(cache_dir)
+
+            with patch.object(_scrape, "scrape_month",
+                               return_value=_mixed_days_with_eur_medium()):
+                result_path = _query.run_query(
+                    currencies=["EUR"],
+                    impacts=["medium"],
+                    cache_dir=cache_dir,
+                    auto_fetch=True,
+                    session=object(),
+                )
+
+            self.assertIsInstance(result_path, Path)
+            self.assertTrue(result_path.exists(), "result parquet must exist")
+
+            df = pd.read_parquet(result_path)
+            self.assertGreater(len(df), 0, "result must contain EUR/medium rows (SC1)")
+            self.assertTrue((df["currency"] == "EUR").all(), "only EUR rows expected")
+            self.assertTrue((df["impact"] == "medium").all(), "only medium-impact rows expected")
+
+    def test_auto_widen_permanent_scope_d05(self):
+        """After a successful auto-widen, a repeat query makes zero network calls (D-05)."""
+        from forexfactory import _query, _scrape
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            self._setup_usd_high_only_cache(cache_dir)
+
+            # First call: auto-widen fires, scrape_month is called
+            with patch.object(_scrape, "scrape_month",
+                               return_value=_mixed_days_with_eur_medium()):
+                _query.run_query(
+                    currencies=["EUR"],
+                    impacts=["medium"],
+                    cache_dir=cache_dir,
+                    auto_fetch=True,
+                    session=object(),
+                )
+
+            # Second call: scope already widened; scrape_month must NOT be called
+            scrape_calls = []
+
+            with patch.object(_scrape, "scrape_month",
+                               side_effect=lambda s, p, **kw: scrape_calls.append(p) or []):
+                result_path = _query.run_query(
+                    currencies=["EUR"],
+                    impacts=["medium"],
+                    cache_dir=cache_dir,
+                    auto_fetch=True,
+                    session=object(),
+                )
+
+            self.assertEqual(len(scrape_calls), 0,
+                             "repeat query must make zero network calls after permanent widen (D-05)")
+            self.assertTrue(result_path.exists(),
+                            "repeat query must still return EUR/medium rows")
+
+    def test_auto_widen_progress_fired_for_scope_miss(self):
+        """run_query fires progress('scope_miss', currency, impact) before auto-widen (D-12)."""
+        from forexfactory import _query, _scrape
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            self._setup_usd_high_only_cache(cache_dir)
+
+            progress_calls = []
+
+            def record_progress(event, **kwargs):
+                progress_calls.append((event, kwargs))
+
+            with patch.object(_scrape, "scrape_month",
+                               return_value=_mixed_days_with_eur_medium()):
+                _query.run_query(
+                    currencies=["EUR"],
+                    impacts=["medium"],
+                    cache_dir=cache_dir,
+                    auto_fetch=True,
+                    session=object(),
+                    progress=record_progress,
+                )
+
+            scope_miss_calls = [(e, kw) for (e, kw) in progress_calls if e == "scope_miss"]
+            self.assertEqual(len(scope_miss_calls), 1,
+                             "progress callback must be called once for the EUR/medium miss")
+            _, kw = scope_miss_calls[0]
+            self.assertEqual(kw.get("currency"), "EUR")
+            self.assertEqual(kw.get("impact"), "medium")
+
+    def test_auto_widen_failure_propagates_auto_fetch_error_d06(self):
+        """scope miss with scrape_month returning [] and auto_fetch=True raises AutoFetchError (D-06)."""
+        from forexfactory import _query, _scrape
+        from forexfactory._exceptions import AutoFetchError
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            self._setup_usd_high_only_cache(cache_dir)
+
+            with patch.object(_scrape, "scrape_month", return_value=[]):
+                with self.assertRaises(AutoFetchError,
+                                       msg="failed auto-widen must raise AutoFetchError (D-06)"):
+                    _query.run_query(
+                        currencies=["EUR"],
+                        impacts=["medium"],
+                        cache_dir=cache_dir,
+                        auto_fetch=True,
+                        session=object(),
+                    )
 
 
 if __name__ == "__main__":
