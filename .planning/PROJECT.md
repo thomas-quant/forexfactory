@@ -54,30 +54,7 @@ A pip-installable Python package that scrapes the [Forex Factory](https://www.fo
 
 ### Active
 
-<!-- This milestone: turn the toolkit into a cached, packaged data provider. Hypotheses until shipped. -->
-
-**Packaging & interfaces** — ✓ all shipped in Phase 1 (see Validated above)
-
-**Cache** — ✓ all shipped (Phase 1 populate/query + Phase 3 lifecycle)
-- [x] When a query exceeds the cached scope, auto-fetch the missing data and widen the cache — ✓ Phase 3 (CACHE-03, D-05/D-06)
-- [x] Future-dated months auto-refresh once the whole month has passed, to fill in `actual` values (forecast-only events mature into expected-vs-surprise) — ✓ Phase 3 (CACHE-05, D-08/D-10)
-
-**Data schema** — ✓ all shipped (Phase 1 core + Phase 2 values/surprise/identity)
-- [x] Core fields: `datetime_utc`, `currency`, `impact`, `title`, `id`, `leaked` — ✓ Phase 1
-- [x] Data values: `forecast`, `actual`, `previous`, `revision`, `hasDataValues` — stored as **raw strings + parsed numeric** — ✓ Phase 2 (DATA-02, DATA-03, DATA-05)
-- [x] Surprise + identity: `actualBetterWorse`, `revisionBetterWorse`, `ebaseId`, `country` — ✓ Phase 2 (DATA-04)
-
-**Data source**
-- [x] HTML-scrape-and-parse retained as the source (wired into `refresh`) — ✓ Phase 1 (SRC-02)
-- [x] Investigate the FF JSON/POST endpoint (`apply-settings`) — NOT ADOPTED (SC5): apply-settings is a settings-save endpoint only; `/calendar/more` is a validated clean-JSON fallback that clears all 4 D-06 criteria but is append-paginated; HTML `?month=` GET stays bulk primary — Phase 2 (SRC-01 spike)
-
-**Code quality (full restructure + fix mapped concerns)**
-- [x] Extract shared deduplication helper (remove copy-paste between `parse_json_to_csv` / `run_pipeline`) — ✓ Phase 1
-- [x] Fix `--in-dir` silent no-op in full-pipeline mode — ✓ Phase 1
-- [x] Stop writing empty JSON on failed scrapes (no permanent skip-poisoning) — ✓ Phase 1
-- [x] Replace stale hardcoded date defaults with sensible/explicit behavior — ✓ Phase 1
-- [x] Add a force-refresh / re-scrape capability — ✓ Phase 3 (CACHE-06: `--force-refresh` + `force_refresh=` kwarg)
-- [x] Add fixture-based tests for the fragile `calendarComponentStates` parser — ✓ Phase 2 (QUAL-05)
+All v1.0 requirements shipped. Active requirements for the next milestone (v1.1 / v2.0) will be defined via `/gsd-new-milestone`.
 
 ### Out of Scope
 
@@ -88,11 +65,13 @@ A pip-installable Python package that scrapes the [Forex Factory](https://www.fo
 
 ## Context
 
-- **Existing system:** Two independent scripts communicating only through files. `scrape.py` fetches HTML → `out/days_YYYY_MM.json`; `pipeline.py` reads those → `economic_events.parquet`. See `.planning/codebase/ARCHITECTURE.md`.
-- **The fragile core:** `extract_days()` walks embedded JS character-by-character to convert it to JSON. Any change to FF's bundle silently breaks it. As of Phase 2 it is protected by golden HTML fixtures in `tests/fixtures/` (QUAL-05); the SRC-01 spike investigated a JSON endpoint to reduce reliance on it and concluded HTML parse stays primary (`/calendar/more` JSON exists as a validated fallback).
-- **Rich raw data already on disk:** each raw event carries ~50 fields (forecast/actual/previous/revision, `actualBetterWorse`, `ebaseId`, etc.); today's pipeline discards all but 6. Re-processing existing `out/` data into the new schema requires no re-scraping.
-- **Known concerns** are catalogued in `.planning/codebase/CONCERNS.md` (tech debt, bugs, fragile areas, test gaps) and feed the Active code-quality requirements.
-- **`api.txt`** (removed in Phase 1) held the single lead for the data-source investigation: `https://www.forexfactory.com/calendar/apply-settings/100000?navigation=1`. The SRC-01 spike (Phase 2) confirmed apply-settings is a settings-save endpoint only; `/calendar/more` is a validated clean-JSON fallback; HTML `?month=` GET remains the bulk primary (see Key Decisions + `02-SRC01-SPIKE.md`).
+**v1.0 shipped 2026-06-09.** The package is fully functional and self-managing:
+
+- **Current state:** pip-installable `forexfactory` package (`src/forexfactory/`, ~2,440 LOC + 4,444 test LOC); 169 tests passing; durable `~/.cache/forexfactory/` parquet cache at `schema_version "2"` covering 195 months (2010-01 → 2026-03)
+- **The fragile core:** `extract_days()` walks embedded JS character-by-character to convert it to JSON. Protected by 4 golden HTML fixtures in `tests/fixtures/` (QUAL-05). `/calendar/more` exists as a validated clean-JSON fallback if it breaks (see Key Decisions).
+- **SRC-GRAPH-01** (`GET /calendar/graph/{eventId}`) is the highest-value future enhancement: returns clean numeric per-event historical time-series (actual/forecast/revision) for expected-vs-surprise analysis without month-by-month scraping. Requires event `id` + `siteId`. Filed as future enhancement.
+- **Known tech debt:** IN-01 (scope-union/settled-check extraction, refactor-only), IN-02 (silent `except pass` in matured loop, under-counts banner in pathological cases only). Both low severity.
+- **Known concerns** are catalogued in `.planning/codebase/CONCERNS.md`.
 
 ## Constraints
 
@@ -132,4 +111,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-09 — Phase 3 (Cache Lifecycle) complete: the cache now self-manages — scope-miss auto-widen (CACHE-03, raises `AutoFetchError` on failure), matured-month auto-refresh (CACHE-05, serve-stale-on-failure), single `auto_fetch` knob + `--no-auto-fetch`, and force-refresh on demand (CACHE-06: `--force-refresh` / `force_refresh=` + `forexfactory.populate()`). Code review caught + fixed a critical force-refresh scope-narrowing data-loss bug (CR-01). Suite at 169 tests. This is the final phase of milestone v1.0 — all CACHE/PKG/DATA/SRC/QUAL requirements shipped. Next: `/gsd-complete-milestone` to archive v1.0.*
+*Last updated: 2026-06-09 after v1.0 milestone — all 22 CACHE/PKG/DATA/SRC/QUAL requirements shipped. 169 tests passing. Next milestone: `/gsd-new-milestone`.*
