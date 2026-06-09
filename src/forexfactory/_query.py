@@ -171,11 +171,30 @@ def run_query(
             manifest = _cache.read_manifest(cache_dir)
             scope = manifest.get("scope", {})
 
-    # D-09: scope check — raise before any parquet reads if the request is not covered.
+    # D-09/CACHE-03: scope check — either raise (auto_fetch=False) or auto-widen (auto_fetch=True).
     if not scope or not _cache._scope_covers(scope, currencies, impacts):
-        _raise_scope_error(currencies, impacts, scope)
+        if not auto_fetch:
+            # D-07: strict cache-only — raise with guidance, zero network calls
+            _raise_scope_error(currencies, impacts, scope)
+        else:
+            from forexfactory import _refresh  # noqa: PLC0415 — lazy; avoids circular import
+            # D-12: fire progress("scope_miss", ...) for each uncovered pair BEFORE fetching
+            if progress is not None:
+                cached_currencies: set = set(scope.get("currencies", []))
+                cached_impacts: set = set(scope.get("impacts", []))
+                for c in currencies:
+                    for i in impacts:
+                        if c not in cached_currencies or i not in cached_impacts:
+                            progress("scope_miss", currency=c, impact=i)
+            # Widen: re-fetches full cached range at union scope (D-05).
+            # AutoFetchError propagates as-is (D-06 fail-closed — no partial data).
+            _refresh.widen_scope_to_cover(cache_dir, currencies, impacts, session=session)
+            # Re-read so the parquet read loop sees the widened cache
+            manifest = _cache.read_manifest(cache_dir)
+            scope = manifest.get("scope", {})
 
     # Candidate months from the manifest, optionally narrowed by start/end (D-07).
+    # Always computed after any scope refresh so the read loop sees up-to-date state.
     all_month_keys = sorted(manifest.get("months", {}).keys())
     candidate_keys = _filter_months_by_range(all_month_keys, start, end)
 
