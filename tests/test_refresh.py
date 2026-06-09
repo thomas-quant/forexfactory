@@ -140,6 +140,82 @@ class RefreshTests(unittest.TestCase):
             self.assertEqual(result["failed"], 0)
 
 
+class RefreshForceRefreshTests(unittest.TestCase):
+    """CACHE-06 / D-02: force_refresh kwarg bypasses the skip-if-cached check."""
+
+    def _make_html(self, days):
+        return (
+            '<script>window.calendarComponentStates = '
+            f'{{"month": {{"days": {json.dumps(days)}}}}};</script>'
+        )
+
+    def test_force_refresh_true_rescrapes_cached_month(self):
+        """force_refresh=True re-scrapes a month that already has non-empty raw JSON."""
+        days = [{"events": [{"currency": "USD", "impactName": "high",
+                              "name": "CPI y/y", "dateline": 1772368200, "id": "cpi-1"}]}]
+        html = self._make_html(days)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir)
+            _cache.ensure_dirs(cache_dir)
+
+            # Pre-write non-empty raw file for 2026-05.
+            raw_path = _cache.raw_json_path(cache_dir, date(2026, 5, 1))
+            raw_path.write_text(json.dumps(days), encoding="utf-8")
+
+            fake_session = FakeSession([FakeResponse(html)])
+
+            result = run_refresh(
+                start="2026-05", end="2026-05",
+                cache_dir=cache_dir,
+                session=fake_session,
+                currencies=["USD"],
+                impacts=["high", "holiday"],
+                between_pages_delay=0.0,
+                retry_delay=0.0,
+                force_refresh=True,
+            )
+
+            self.assertEqual(
+                len(fake_session.calls), 1,
+                "session.get must be called once when force_refresh=True",
+            )
+            self.assertEqual(result["fetched"], 1)
+            self.assertEqual(result["skipped"], 0)
+            self.assertEqual(result["failed"], 0)
+
+    def test_force_refresh_false_preserves_skip_behavior(self):
+        """force_refresh=False (explicit) skips a month with non-empty raw JSON — regression guard."""
+        days = [{"events": [{"currency": "USD", "impactName": "high",
+                              "name": "CPI y/y", "dateline": 1772368200, "id": "cpi-1"}]}]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir)
+            _cache.ensure_dirs(cache_dir)
+
+            raw_path = _cache.raw_json_path(cache_dir, date(2026, 5, 1))
+            raw_path.write_text(json.dumps(days), encoding="utf-8")
+
+            fake_session = FakeSession([])  # no responses — must not be called
+
+            result = run_refresh(
+                start="2026-05", end="2026-05",
+                cache_dir=cache_dir,
+                session=fake_session,
+                between_pages_delay=0.0,
+                retry_delay=0.0,
+                force_refresh=False,
+            )
+
+            self.assertEqual(
+                len(fake_session.calls), 0,
+                "session.get must not be called when force_refresh=False",
+            )
+            self.assertEqual(result["skipped"], 1)
+            self.assertEqual(result["fetched"], 0)
+            self.assertEqual(result["failed"], 0)
+
+
 class RefreshCliRoutingTests(unittest.TestCase):
 
     def test_cli_refresh_dispatches_to_run_refresh_with_append_currencies(self):
