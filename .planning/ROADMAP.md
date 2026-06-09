@@ -108,7 +108,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-  - [ ] 03-02-PLAN.md — Matured-month auto-refresh: refresh_matured_months helper + auto_fetch knob on query/populate/get + CLI matured banner (CACHE-05, D-07/08/09/10/11/12, SC2)
+  - [x] 03-02-PLAN.md — Matured-month auto-refresh: refresh_matured_months helper + auto_fetch knob on query/populate/get + CLI matured banner (CACHE-05, D-07/08/09/10/11/12, SC2)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -123,4 +123,4 @@ Phases execute in numeric order: 1 → 2 → 3
 |-------|----------------|--------|-----------|
 | 1. Installable Data Provider | 7/7 | Complete    | 2026-06-08 |
 | 2. Full Analytical Schema + Source Spike | 5/5 | Complete    | 2026-06-08 |
-| 3. Cache Lifecycle | 1/3 | In Progress|  |
+| 3. Cache Lifecycle | 2/3 | In Progress|  |
