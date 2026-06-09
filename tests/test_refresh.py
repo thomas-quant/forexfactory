@@ -410,5 +410,198 @@ class RefreshCliRoutingTests(unittest.TestCase):
         self.assertEqual(captured["retry_delay"], 1.5)
 
 
+class RefreshWidenScopeTests(unittest.TestCase):
+    """CACHE-03 / D-05/D-06: widen_scope_to_cover() auto-widens the cache scope."""
+
+    # ── test data helpers ───────────────────────────────────────────────────
+
+    def _usd_high_days(self):
+        return [{"events": [{
+            "currency": "USD",
+            "impactName": "High Impact Expected",
+            "name": "CPI y/y",
+            "dateline": 1746057600,
+            "id": "cpi-1",
+            "leaked": False,
+            "hasDataValues": True,
+        }]}]
+
+    def _eur_medium_days(self):
+        return [{"events": [{
+            "currency": "EUR",
+            "impactName": "Medium Impact Expected",
+            "name": "ECB Rate Decision",
+            "dateline": 1746057600,
+            "id": "ecb-1",
+            "leaked": False,
+            "hasDataValues": True,
+        }]}]
+
+    def _mixed_days(self):
+        """Days containing both USD/high and EUR/medium events."""
+        return [{"events": [
+            {
+                "currency": "USD",
+                "impactName": "High Impact Expected",
+                "name": "CPI y/y",
+                "dateline": 1746057600,
+                "id": "cpi-1",
+                "leaked": False,
+                "hasDataValues": True,
+            },
+            {
+                "currency": "EUR",
+                "impactName": "Medium Impact Expected",
+                "name": "ECB Rate Decision",
+                "dateline": 1746057600,
+                "id": "ecb-1",
+                "leaked": False,
+                "hasDataValues": True,
+            },
+        ]}]
+
+    def _seed_cache(self, cache_dir: Path, months_dict: dict, scope: dict) -> None:
+        """Write manifest + per-month parquets under cache_dir."""
+        from forexfactory import _populate
+        _cache.ensure_dirs(cache_dir)
+        manifest = {
+            "scope": scope,
+            "months": {
+                k: {"scraped_at": "2026-01-01T00:00:00Z", "settled": True}
+                for k in months_dict
+            },
+        }
+        for month_key, days in months_dict.items():
+            year_str, month_str = month_key.split("-")
+            anchor = date(int(year_str), int(month_str), 1)
+            _populate.build_month_parquet(
+                cache_dir, anchor, days,
+                currencies=scope.get("currencies", ["USD"]),
+                impacts=scope.get("impacts", ["high", "holiday"]),
+            )
+        _cache.write_manifest(cache_dir, manifest)
+
+    # ── tests ───────────────────────────────────────────────────────────────
+
+    def test_widen_scope_succeeds_and_unions_scope(self):
+        """widen_scope_to_cover returns without raising and permanently unions the manifest scope."""
+        import pandas as pd
+        from forexfactory import _scrape
+        from forexfactory._refresh import widen_scope_to_cover
+        from forexfactory._exceptions import AutoFetchError  # noqa: F401 — must import
+
+        initial_scope = {"currencies": ["USD"], "impacts": ["high", "holiday"]}
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir)
+            self._seed_cache(cache_dir, {"2026-05": self._usd_high_days()}, initial_scope)
+
+            # Provide mixed days so widen can find EUR/medium to store
+            with patch.object(_scrape, "scrape_month", return_value=self._mixed_days()):
+                widen_scope_to_cover(
+                    cache_dir,
+                    ["EUR"],
+                    ["medium"],
+                    session=object(),
+                    between_pages_delay=0.0,
+                    retry_delay=0.0,
+                )
+
+            manifest = _cache.read_manifest(cache_dir)
+            scope = manifest.get("scope", {})
+            self.assertIn("EUR", scope.get("currencies", []),
+                          "manifest scope must include EUR after widen")
+            self.assertIn("USD", scope.get("currencies", []),
+                          "manifest scope must still include USD after widen")
+            self.assertIn("medium", scope.get("impacts", []),
+                          "manifest scope must include medium after widen")
+            self.assertIn("high", scope.get("impacts", []),
+                          "manifest scope must still include high after widen")
+
+            # Month parquet must contain EUR/medium rows after widen
+            anchor = date(2026, 5, 1)
+            parquet_path = _cache.month_parquet_path(cache_dir, anchor)
+            df = pd.read_parquet(parquet_path)
+            self.assertTrue(
+                any((df["currency"] == "EUR") & (df["impact"] == "medium")),
+                "month parquet must contain EUR/medium rows after widen",
+            )
+
+    def test_widen_scope_covers_full_cached_range_not_query_window(self):
+        """widen_scope_to_cover re-fetches ALL cached months (full range D-05)."""
+        from forexfactory import _scrape
+        from forexfactory._refresh import widen_scope_to_cover
+
+        initial_scope = {"currencies": ["USD"], "impacts": ["high", "holiday"]}
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir)
+            # Seed TWO cached months
+            self._seed_cache(
+                cache_dir,
+                {"2026-04": self._usd_high_days(), "2026-05": self._usd_high_days()},
+                initial_scope,
+            )
+
+            scrape_calls = []
+
+            def counting_scrape(session, page, *, retry_delay):
+                scrape_calls.append(page.anchor)
+                return self._eur_medium_days()
+
+            with patch.object(_scrape, "scrape_month", side_effect=counting_scrape):
+                widen_scope_to_cover(
+                    cache_dir,
+                    ["EUR"],
+                    ["medium"],
+                    session=object(),
+                    between_pages_delay=0.0,
+                    retry_delay=0.0,
+                )
+
+            self.assertEqual(
+                len(scrape_calls), 2,
+                f"widen_scope_to_cover must fetch ALL cached months (D-05), got {len(scrape_calls)}",
+            )
+            self.assertIn(date(2026, 4, 1), scrape_calls,
+                          "2026-04 must be fetched as part of the full cached range (D-05)")
+            self.assertIn(date(2026, 5, 1), scrape_calls,
+                          "2026-05 must be fetched as part of the full cached range (D-05)")
+
+    def test_widen_scope_failure_raises_auto_fetch_error(self):
+        """Failed widen raises AutoFetchError (D-06); manifest scope is unchanged."""
+        from forexfactory import _scrape
+        from forexfactory._refresh import widen_scope_to_cover
+        from forexfactory._exceptions import AutoFetchError
+
+        initial_scope = {"currencies": ["USD"], "impacts": ["high", "holiday"]}
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir)
+            self._seed_cache(cache_dir, {"2026-05": self._usd_high_days()}, initial_scope)
+            original_scope = _cache.read_manifest(cache_dir).get("scope", {})
+
+            # scrape_month returns [] → no days fetched → scope never widens
+            with patch.object(_scrape, "scrape_month", return_value=[]):
+                with self.assertRaises(AutoFetchError,
+                                       msg="widen_scope_to_cover must raise AutoFetchError when widen fails (D-06)"):
+                    widen_scope_to_cover(
+                        cache_dir,
+                        ["EUR"],
+                        ["medium"],
+                        session=object(),
+                        between_pages_delay=0.0,
+                        retry_delay=0.0,
+                    )
+
+            # Manifest scope must be unchanged (D-06: no partial data)
+            manifest = _cache.read_manifest(cache_dir)
+            self.assertEqual(
+                manifest.get("scope", {}),
+                original_scope,
+                "manifest scope must not change when widen fails (D-06)",
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
