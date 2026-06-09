@@ -109,6 +109,16 @@ def main(argv: list[str] | None = None) -> int:
         default=False,
         help="Force rebuild all months even if already cached [Phase-2 migration]",
     )
+    pop.add_argument(
+        "--force-refresh",
+        action="store_true",
+        default=False,
+        help=(
+            "Re-scrape the requested range over the network and overwrite cached parquets. "
+            "Distinct from --force (which re-processes on-disk raw JSON without network) "
+            "[CACHE-06 / D-01]"
+        ),
+    )
 
     # ── refresh ───────────────────────────────────────────────────────────────
     rfr = subparsers.add_parser(
@@ -153,6 +163,15 @@ def main(argv: list[str] | None = None) -> int:
         help=(
             "Seconds to sleep before retrying a failed month "
             f"(default: {_scrape.RETRY_DELAY}) [D-11]"
+        ),
+    )
+    rfr.add_argument(
+        "--force-refresh",
+        action="store_true",
+        default=False,
+        help=(
+            "Re-scrape already-cached months and overwrite their parquets. "
+            "Without this flag cached months are skipped (D-11) [CACHE-06 / D-02]"
         ),
     )
 
@@ -209,6 +228,7 @@ def main(argv: list[str] | None = None) -> int:
             cache_dir=cache_dir,
             between_pages_delay=args.between_pages_delay,
             retry_delay=args.retry_delay,
+            force_refresh=args.force_refresh,
         )
         logger.info(
             "[refresh] done — fetched=%d skipped=%d failed=%d",
@@ -226,11 +246,19 @@ def main(argv: list[str] | None = None) -> int:
             raw_dir=args.raw_dir,
             cache_dir=cache_dir,
             force=args.force,
+            force_refresh=args.force_refresh,
         )
-        logger.info(
-            "[populate] done — populated=%d skipped=%d empty=%d",
-            result["populated"], result["skipped"], result["empty"],
-        )
+        if args.force_refresh:
+            # D-04: force-refresh returns fetched/skipped/failed
+            logger.info(
+                "[populate] force-refresh done — fetched=%d skipped=%d failed=%d",
+                result["fetched"], result["skipped"], result["failed"],
+            )
+        else:
+            logger.info(
+                "[populate] done — populated=%d skipped=%d empty=%d",
+                result["populated"], result["skipped"], result["empty"],
+            )
         return 0
 
     if args.command == "query":

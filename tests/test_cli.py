@@ -180,7 +180,7 @@ class CliRoutingTests(unittest.TestCase):
         """populate subcommand routes to _populate.run_populate with correct args."""
         captured = {}
 
-        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir, force):
+        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir, force, force_refresh=False):
             captured["currencies"] = currencies
             captured["raw_dir"] = raw_dir
             return {"populated": 0, "skipped": 0, "empty": 0}
@@ -200,7 +200,7 @@ class CliRoutingTests(unittest.TestCase):
         """D-12: --impact high --impact holiday yields impacts == ["high", "holiday"]."""
         captured = {}
 
-        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir, force):
+        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir, force, force_refresh=False):
             captured["impacts"] = impacts
             return {"populated": 0, "skipped": 0, "empty": 0}
 
@@ -246,7 +246,7 @@ class CliValidateMonthTests(unittest.TestCase):
         """A valid month string '2024-03' passes validation without sys.exit."""
         captured = {}
 
-        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir, force):
+        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir, force, force_refresh=False):
             captured["start"] = start
             return {"populated": 0, "skipped": 0, "empty": 0}
 
@@ -358,7 +358,7 @@ class CliForcePopulateTests(unittest.TestCase):
         """--force sets force=True in the run_populate call."""
         captured = {}
 
-        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir, force):
+        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir, force, force_refresh=False):
             captured["force"] = force
             return {"populated": 0, "skipped": 0, "empty": 0}
 
@@ -371,7 +371,7 @@ class CliForcePopulateTests(unittest.TestCase):
         """Without --force, force=False is passed to run_populate."""
         captured = {}
 
-        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir, force):
+        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir, force, force_refresh=False):
             captured["force"] = force
             return {"populated": 0, "skipped": 0, "empty": 0}
 
@@ -379,3 +379,100 @@ class CliForcePopulateTests(unittest.TestCase):
             cli.main(["populate", "--raw-dir", "out"])
 
         self.assertFalse(captured["force"], "force must default to False when --force not given")
+
+
+class CliForceRefreshTests(unittest.TestCase):
+    """CACHE-06 / D-01/D-02: --force-refresh wired through CLI on populate and refresh."""
+
+    def test_populate_force_refresh_flag_forwarded_to_run_populate(self):
+        """--force-refresh on populate sets force_refresh=True in run_populate call."""
+        captured = {}
+
+        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir, force, force_refresh=False):
+            captured["force_refresh"] = force_refresh
+            return {"fetched": 1, "skipped": 0, "failed": 0}
+
+        with patch.object(cli._populate, "run_populate", side_effect=fake_run_populate):
+            exit_code = cli.main(["populate", "--force-refresh", "--raw-dir", "out"])
+
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(captured["force_refresh"],
+                        "--force-refresh must set force_refresh=True in run_populate call")
+
+    def test_populate_without_force_refresh_defaults_false(self):
+        """Without --force-refresh, force_refresh=False is passed to run_populate."""
+        captured = {}
+
+        def fake_run_populate(*, currencies, impacts, start, end, raw_dir, cache_dir, force, force_refresh=False):
+            captured["force_refresh"] = force_refresh
+            return {"populated": 0, "skipped": 0, "empty": 0}
+
+        with patch.object(cli._populate, "run_populate", side_effect=fake_run_populate):
+            cli.main(["populate", "--raw-dir", "out"])
+
+        self.assertFalse(captured["force_refresh"],
+                         "force_refresh must default to False when --force-refresh not given")
+
+    def test_refresh_force_refresh_flag_forwarded_to_run_refresh(self):
+        """--force-refresh on refresh sets force_refresh=True in run_refresh call (D-02)."""
+        from forexfactory import _refresh
+
+        captured = {}
+
+        def fake_run_refresh(
+            *,
+            currencies=None,
+            impacts=None,
+            start=None,
+            end=None,
+            cache_dir=None,
+            session=None,
+            between_pages_delay=None,
+            retry_delay=None,
+            force_refresh=False,
+        ):
+            captured["force_refresh"] = force_refresh
+            return {"fetched": 1, "skipped": 0, "failed": 0}
+
+        with patch.object(_refresh, "run_refresh", side_effect=fake_run_refresh):
+            exit_code = cli.main([
+                "refresh",
+                "--force-refresh",
+                "--start", "2026-04",
+                "--end", "2026-05",
+            ])
+
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(captured["force_refresh"],
+                        "--force-refresh must set force_refresh=True in run_refresh call")
+
+    def test_refresh_without_force_refresh_defaults_false(self):
+        """Without --force-refresh on refresh, force_refresh=False is passed to run_refresh."""
+        from forexfactory import _refresh
+
+        captured = {}
+
+        def fake_run_refresh(
+            *,
+            currencies=None,
+            impacts=None,
+            start=None,
+            end=None,
+            cache_dir=None,
+            session=None,
+            between_pages_delay=None,
+            retry_delay=None,
+            force_refresh=False,
+        ):
+            captured["force_refresh"] = force_refresh
+            return {"fetched": 0, "skipped": 1, "failed": 0}
+
+        with patch.object(_refresh, "run_refresh", side_effect=fake_run_refresh):
+            cli.main([
+                "refresh",
+                "--start", "2026-04",
+                "--end", "2026-05",
+            ])
+
+        self.assertFalse(captured["force_refresh"],
+                         "force_refresh must default to False without --force-refresh")

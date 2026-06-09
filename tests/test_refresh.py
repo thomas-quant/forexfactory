@@ -235,6 +235,7 @@ class RefreshCliRoutingTests(unittest.TestCase):
             session=None,
             between_pages_delay=None,
             retry_delay=None,
+            force_refresh=False,
         ):
             captured["currencies"] = currencies
             captured["impacts"] = impacts
