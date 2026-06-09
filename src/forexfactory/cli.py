@@ -38,6 +38,22 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# Progress callback (D-11/D-12): maps structured events to stdout banners
+# ---------------------------------------------------------------------------
+
+def _print_progress(event: str, **kwargs) -> None:
+    """Print a D-12 progress banner to stdout for auto-fetch events.
+
+    Invoked by run_query before each auto-fetch begins so the banner precedes
+    the [N/total] per-month progress lines that run_refresh emits to logger.
+    The library never calls print(); banners live here in cli.py (D-11).
+    """
+    if event == "matured":
+        print(f"{kwargs['count']} months matured since last run — refreshing actuals...")
+    # "scope_miss" branch will be added in 03-03 (CACHE-03)
+
+
+# ---------------------------------------------------------------------------
 # Validation helpers
 # ---------------------------------------------------------------------------
 
@@ -271,13 +287,14 @@ def main(argv: list[str] | None = None) -> int:
                 end=args.end,
                 include_no_data=args.include_no_data,
                 cache_dir=cache_dir,
+                progress=_print_progress,  # D-11/D-12: banner fires before [N/total] log lines
             )
         except ValueError as exc:
             # D-09: out-of-scope query — print guidance to stderr, exit non-zero
             print(str(exc), file=sys.stderr)
             sys.exit(1)
 
-        # D-10: stdout = ONLY the absolute path; all diagnostics go to logger (stderr)
+        # D-10: stdout = ONLY the absolute path (plus any D-12 banners); diagnostics → logger
         print(path)
         return 0
 
