@@ -100,7 +100,19 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. Months that were scraped while future-dated and are now fully in the past are automatically re-fetched on the next `populate` or `query` call, with their `actual` values populated in the cache
   3. `forexfactory populate --force-refresh --start 2025-01` (and equivalent library argument) re-scrapes the specified range and overwrites the cached parquet regardless of existing cache state
 
-**Plans**: TBD
+**Plans**: 3 plans
+
+**Wave 1**
+
+  - [ ] 03-01-PLAN.md — Force-refresh slice: --force-refresh flag + force_refresh kwarg + run_refresh skip-bypass + forexfactory.populate() (CACHE-06, D-01/02/03/04, SC3)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+  - [ ] 03-02-PLAN.md — Matured-month auto-refresh: refresh_matured_months helper + auto_fetch knob on query/populate/get + CLI matured banner (CACHE-05, D-07/08/09/10/11/12, SC2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+  - [ ] 03-03-PLAN.md — Scope-miss auto-widen: widen_scope_to_cover + AutoFetchError + run_query conditional + CLI scope-miss banner (CACHE-03, D-05/06/07/11/12, SC1)
 
 ## Progress
 
@@ -111,4 +123,4 @@ Phases execute in numeric order: 1 → 2 → 3
 |-------|----------------|--------|-----------|
 | 1. Installable Data Provider | 7/7 | Complete    | 2026-06-08 |
 | 2. Full Analytical Schema + Source Spike | 5/5 | Complete    | 2026-06-08 |
-| 3. Cache Lifecycle | 0/TBD | Not started | - |
+| 3. Cache Lifecycle | 0/3 | Planned     | - |
