@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Installable Data Provider** - Package scaffold + basic cache + restructured pipeline; delivers the install → populate → query → parquet-path end-to-end path (completed 2026-06-08)
 - [x] **Phase 2: Full Analytical Schema + Source Spike** - Expand the parquet schema with forecast/actual/surprise/identity fields; fixture-test the fragile parser; investigate the FF API endpoint (completed 2026-06-08)
-- [ ] **Phase 3: Cache Lifecycle** - Auto-widen cache on scope miss; auto-refresh matured future months; force-refresh on demand
+- [x] **Phase 3: Cache Lifecycle** - Auto-widen cache on scope miss; auto-refresh matured future months; force-refresh on demand (completed 2026-06-09)
 
 ## Phase Details
 
@@ -112,7 +112,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-  - [ ] 03-03-PLAN.md — Scope-miss auto-widen: widen_scope_to_cover + AutoFetchError + run_query conditional + CLI scope-miss banner (CACHE-03, D-05/06/07/11/12, SC1)
+  - [x] 03-03-PLAN.md — Scope-miss auto-widen: widen_scope_to_cover + AutoFetchError + run_query conditional + CLI scope-miss banner (CACHE-03, D-05/06/07/11/12, SC1)
 
 ## Progress
 
@@ -123,4 +123,4 @@ Phases execute in numeric order: 1 → 2 → 3
 |-------|----------------|--------|-----------|
 | 1. Installable Data Provider | 7/7 | Complete    | 2026-06-08 |
 | 2. Full Analytical Schema + Source Spike | 5/5 | Complete    | 2026-06-08 |
-| 3. Cache Lifecycle | 2/3 | In Progress|  |
+| 3. Cache Lifecycle | 3/3 | Complete   | 2026-06-09 |

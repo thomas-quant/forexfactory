@@ -18,7 +18,7 @@ Requirements for the initial packaged release. Each maps to a roadmap phase.
 
 - [x] **CACHE-01**: Data is cached as parquet in a shared user cache dir (default `~/.cache/forexfactory` / OS equivalent), overridable via path/env var
 - [x] **CACHE-02**: Cache scope (currencies, impacts) is chosen when the cache is populated
-- [ ] **CACHE-03**: A query that exceeds cached scope auto-fetches the missing data and widens the cache
+- [x] **CACHE-03**: A query that exceeds cached scope auto-fetches the missing data and widens the cache
 - [x] **CACHE-04**: Settled (fully-past) months are never re-fetched automatically — manual refresh only
 - [x] **CACHE-05**: Months cached while future-dated are auto-refreshed once the whole month has passed, to fill in `actual` values
 - [x] **CACHE-06**: A force-refresh capability can re-scrape a given range on demand (CLI flag + library arg)
@@ -80,7 +80,7 @@ Populated during roadmap creation — each requirement maps to exactly one phase
 | PKG-04 | Phase 1 | Complete |
 | CACHE-01 | Phase 1 | Complete |
 | CACHE-02 | Phase 1 | Complete |
-| CACHE-03 | Phase 3 | Pending |
+| CACHE-03 | Phase 3 | Complete |
 | CACHE-04 | Phase 1 | Complete |
 | CACHE-05 | Phase 3 | Complete |
 | CACHE-06 | Phase 3 | Complete |
