@@ -740,5 +740,182 @@ class PopulatePhase2SchemaTests(unittest.TestCase):
         self.assertIn("force", params, "run_populate must have a 'force' kwarg")
 
 
+class PopulateForceRefreshTests(unittest.TestCase):
+    """CACHE-06 / D-01/D-03/D-04: force_refresh kwarg on run_populate + forexfactory.populate()."""
+
+    def _usd_high_event(self, dateline: int = 1772368200) -> dict:
+        return {
+            "currency": "USD",
+            "impactName": "High Impact Expected",
+            "name": "CPI y/y",
+            "dateline": dateline,
+            "id": "cpi-1",
+            "leaked": False,
+        }
+
+    def _make_html(self, days):
+        import json
+        return (
+            '<script>window.calendarComponentStates = '
+            f'{{"month": {{"days": {json.dumps(days)}}}}};</script>'
+        )
+
+    def test_force_refresh_true_returns_fetched_skipped_failed_dict(self):
+        """run_populate(force_refresh=True) returns {"fetched","skipped","failed"} dict (D-04)."""
+        import json
+        from forexfactory import _populate, _scrape, _cache
+
+        days = [{"events": [self._usd_high_event()]}]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            cache_dir = tmp_path / "cache"
+            cache_dir.mkdir()
+
+            # Pre-seed a parquet + manifest entry for the month
+            _cache.ensure_dirs(cache_dir)
+            from datetime import timezone
+            scraped_at = "2026-01-01T00:00:00Z"
+            _cache.update_manifest_month(
+                cache_dir, date(2026, 5, 1),
+                scraped_at=scraped_at,
+                settled=True,
+                currencies=["USD"],
+                impacts=["high", "holiday"],
+            )
+
+            html = self._make_html(days)
+            with patch.object(_scrape, "scrape_month", return_value=days), \
+                 patch.object(_scrape, "build_session", return_value=object()):
+                result = _populate.run_populate(
+                    force_refresh=True,
+                    start="2026-05",
+                    end="2026-05",
+                    cache_dir=cache_dir,
+                    currencies=["USD"],
+                    impacts=["high", "holiday"],
+                )
+
+            # Must return fetched/skipped/failed dict (D-04)
+            self.assertIn("fetched", result, "force_refresh route must return 'fetched' key")
+            self.assertIn("skipped", result, "force_refresh route must return 'skipped' key")
+            self.assertIn("failed", result, "force_refresh route must return 'failed' key")
+            self.assertEqual(result["fetched"], 1)
+            self.assertEqual(result["skipped"], 0)
+            self.assertEqual(result["failed"], 0)
+
+    def test_force_refresh_false_returns_populated_skipped_empty_dict(self):
+        """run_populate(force_refresh=False) default disk-ingest returns populated/skipped/empty dict (D-01 unchanged)."""
+        import json
+        from forexfactory import _populate
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            raw_dir = tmp_path / "raw"
+            raw_dir.mkdir()
+            cache_dir = tmp_path / "cache"
+            cache_dir.mkdir()
+
+            (raw_dir / "days_2026_03.json").write_text(
+                json.dumps([{"events": [self._usd_high_event()]}]),
+                encoding="utf-8",
+            )
+
+            result = _populate.run_populate(
+                force_refresh=False,
+                cache_dir=cache_dir,
+                raw_dir=str(raw_dir),
+            )
+
+            self.assertIn("populated", result, "disk-ingest path must return 'populated' key")
+            self.assertIn("skipped", result, "disk-ingest path must return 'skipped' key")
+            self.assertIn("empty", result, "disk-ingest path must return 'empty' key")
+            self.assertEqual(result["populated"], 1)
+
+    def test_force_refresh_true_parquet_overwritten(self):
+        """run_populate(force_refresh=True) overwrites the existing month parquet."""
+        import time as time_module
+        import json
+        from forexfactory import _populate, _scrape, _cache, _pipeline
+
+        days = [{"events": [self._usd_high_event()]}]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            raw_dir = tmp_path / "raw"
+            raw_dir.mkdir()
+            cache_dir = tmp_path / "cache"
+            cache_dir.mkdir()
+
+            # First, populate normally to create the initial parquet
+            (raw_dir / "days_2026_05.json").write_text(
+                json.dumps(days), encoding="utf-8",
+            )
+            _populate.run_populate(
+                cache_dir=cache_dir, raw_dir=str(raw_dir),
+                currencies=["USD"], impacts=["high", "holiday"],
+            )
+
+            parquet_path = _cache.month_parquet_path(cache_dir, date(2026, 5, 1))
+            self.assertTrue(parquet_path.exists(), "initial parquet must exist")
+            mtime_before = parquet_path.stat().st_mtime
+
+            # Brief pause so filesystem mtime can change
+            time_module.sleep(0.05)
+
+            # Force-refresh: must overwrite parquet
+            with patch.object(_scrape, "scrape_month", return_value=days), \
+                 patch.object(_scrape, "build_session", return_value=object()):
+                result = _populate.run_populate(
+                    force_refresh=True,
+                    start="2026-05",
+                    end="2026-05",
+                    cache_dir=cache_dir,
+                    currencies=["USD"],
+                    impacts=["high", "holiday"],
+                )
+
+            mtime_after = parquet_path.stat().st_mtime
+            self.assertGreater(mtime_after, mtime_before,
+                               "parquet mtime must increase after force_refresh overwrite")
+            self.assertEqual(result["fetched"], 1)
+
+    def test_library_populate_returns_same_dict_as_engine(self):
+        """forexfactory.populate(force_refresh=True) returns the same dict shape as run_populate (D-03)."""
+        import json
+        import forexfactory
+        from forexfactory import _scrape, _cache
+
+        days = [{"events": [self._usd_high_event()]}]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            cache_dir.mkdir()
+            _cache.ensure_dirs(cache_dir)
+
+            with patch.object(_scrape, "scrape_month", return_value=days), \
+                 patch.object(_scrape, "build_session", return_value=object()):
+                result = forexfactory.populate(
+                    force_refresh=True,
+                    start="2026-05",
+                    end="2026-05",
+                    cache_dir=cache_dir,
+                    currencies=["USD"],
+                    impacts=["high", "holiday"],
+                )
+
+            self.assertIn("fetched", result, "forexfactory.populate must return 'fetched' key")
+            self.assertIn("skipped", result, "forexfactory.populate must return 'skipped' key")
+            self.assertIn("failed", result, "forexfactory.populate must return 'failed' key")
+
+    def test_force_refresh_signature_in_run_populate(self):
+        """run_populate() has a 'force_refresh' keyword-only parameter (D-03)."""
+        import inspect
+        from forexfactory import _populate
+        params = inspect.signature(_populate.run_populate).parameters
+        self.assertIn("force_refresh", params,
+                      "run_populate must have a 'force_refresh' kwarg")
+
+
 if __name__ == "__main__":
     unittest.main()
