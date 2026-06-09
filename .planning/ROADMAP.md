@@ -104,7 +104,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 **Wave 1**
 
-  - [ ] 03-01-PLAN.md — Force-refresh slice: --force-refresh flag + force_refresh kwarg + run_refresh skip-bypass + forexfactory.populate() (CACHE-06, D-01/02/03/04, SC3)
+  - [x] 03-01-PLAN.md — Force-refresh slice: --force-refresh flag + force_refresh kwarg + run_refresh skip-bypass + forexfactory.populate() (CACHE-06, D-01/02/03/04, SC3)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -123,4 +123,4 @@ Phases execute in numeric order: 1 → 2 → 3
 |-------|----------------|--------|-----------|
 | 1. Installable Data Provider | 7/7 | Complete    | 2026-06-08 |
 | 2. Full Analytical Schema + Source Spike | 5/5 | Complete    | 2026-06-08 |
-| 3. Cache Lifecycle | 0/3 | Planned     | - |
+| 3. Cache Lifecycle | 1/3 | In Progress|  |
