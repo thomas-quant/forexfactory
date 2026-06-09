@@ -519,5 +519,208 @@ class QueryIncludeNoDataTests(unittest.TestCase):
             self.assertEqual(len(df), 2, "get(include_no_data=True) must surface speech rows")
 
 
+# ---------------------------------------------------------------------------
+# CACHE-05: auto_fetch / matured-month wiring tests
+# ---------------------------------------------------------------------------
+
+def _usd_high_data_row_with_actual(dt: str = "2026-05-01 08:30:00") -> dict:
+    """USD/high data row with actual value — simulates a matured month re-fetch result."""
+    return {
+        "datetime_utc": pd.Timestamp(dt, tz="UTC"),
+        "currency": "USD",
+        "impact": "high",
+        "title": "CPI y/y",
+        "id": "cpi-1",
+        "leaked": False,
+        "hasDataValues": True,
+        "actual": 0.045,   # 4.5% parsed float — non-NaN
+        "actual_raw": "4.5%",
+    }
+
+
+def _usd_high_data_row_no_actual(dt: str = "2026-05-01 08:30:00") -> dict:
+    """USD/high data row without actual — simulates a stale forecast-only cache entry."""
+    import math
+    return {
+        "datetime_utc": pd.Timestamp(dt, tz="UTC"),
+        "currency": "USD",
+        "impact": "high",
+        "title": "CPI y/y",
+        "id": "cpi-1",
+        "leaked": False,
+        "hasDataValues": True,
+        "actual": float("nan"),
+        "actual_raw": "",
+    }
+
+
+class QueryAutoFetchTests(unittest.TestCase):
+    """CACHE-05 / D-07/D-09: auto_fetch kwarg on run_query + get() (matured-month re-fetch)."""
+
+    def _setup_matured_cache(self, cache_dir: Path) -> None:
+        """Seed a cache with a settled:false past month (2026-05) + stale forecast-only parquet."""
+        from forexfactory import _cache
+
+        _cache.ensure_dirs(cache_dir)
+        # Write stale parquet: no actual value
+        anchor = __import__("datetime").date(2026, 5, 1)
+        p = _cache.month_parquet_path(cache_dir, anchor)
+        _make_parquet(p, [_usd_high_data_row_no_actual()])
+        # Write manifest with settled=False
+        _cache.write_manifest(cache_dir, {
+            "scope": {"currencies": ["USD"], "impacts": ["high", "holiday"]},
+            "months": {
+                "2026-05": {"scraped_at": "2026-01-01T00:00:00Z", "settled": False},
+            },
+        })
+
+    def _fresh_days(self):
+        """Scrape fixture returning a day with an actual value."""
+        return [{"events": [{
+            "currency": "USD",
+            "impactName": "High Impact Expected",
+            "name": "CPI y/y",
+            "dateline": 1746057600,
+            "id": "cpi-1",
+            "leaked": False,
+            "hasDataValues": True,
+            "forecast": "4.3%",
+            "actual": "4.5%",
+        }]}]
+
+    def test_query_auto_fetch_true_matures_month(self):
+        """run_query(auto_fetch=True) re-fetches a matured settled:false month (SC2)."""
+        from forexfactory import _query, _scrape
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            self._setup_matured_cache(cache_dir)
+
+            with patch.object(_scrape, "scrape_month", return_value=self._fresh_days()):
+                result_path = _query.run_query(
+                    currencies=["USD"],
+                    impacts=["high", "holiday"],
+                    cache_dir=cache_dir,
+                    auto_fetch=True,
+                    session=object(),
+                    between_pages_delay=0.0,
+                    retry_delay=0.0,
+                )
+
+            df = pd.read_parquet(result_path)
+            self.assertGreater(len(df), 0)
+            import math
+            self.assertFalse(
+                math.isnan(df.iloc[0]["actual"]),
+                "query with auto_fetch=True must surface the re-fetched actual value (SC2)",
+            )
+
+    def test_query_auto_fetch_false_suppresses_matured(self):
+        """run_query(auto_fetch=False) skips the matured check — strict cache-only (D-07/D-09)."""
+        from forexfactory import _query, _scrape
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            self._setup_matured_cache(cache_dir)
+
+            mock_calls = []
+
+            def counting_scrape(session, page, *, retry_delay):
+                mock_calls.append(page)
+                return []
+
+            with patch.object(_scrape, "scrape_month", side_effect=counting_scrape):
+                result_path = _query.run_query(
+                    currencies=["USD"],
+                    impacts=["high", "holiday"],
+                    cache_dir=cache_dir,
+                    auto_fetch=False,
+                )
+
+            self.assertEqual(len(mock_calls), 0,
+                             "auto_fetch=False must not trigger any scrape calls (D-09)")
+
+    def test_query_progress_callback_fired_for_matured(self):
+        """run_query fires progress('matured', count=N) before re-fetching (D-11/D-12)."""
+        from forexfactory import _query, _scrape
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            self._setup_matured_cache(cache_dir)
+
+            progress_calls = []
+
+            def record_progress(event, **kwargs):
+                progress_calls.append((event, kwargs))
+
+            with patch.object(_scrape, "scrape_month", return_value=self._fresh_days()):
+                _query.run_query(
+                    currencies=["USD"],
+                    impacts=["high", "holiday"],
+                    cache_dir=cache_dir,
+                    auto_fetch=True,
+                    session=object(),
+                    between_pages_delay=0.0,
+                    retry_delay=0.0,
+                    progress=record_progress,
+                )
+
+            self.assertEqual(len(progress_calls), 1,
+                             "progress callback must be called exactly once for one matured month")
+            event, kwargs = progress_calls[0]
+            self.assertEqual(event, "matured")
+            self.assertEqual(kwargs.get("count"), 1)
+
+    def test_query_progress_callback_not_fired_when_auto_fetch_false(self):
+        """progress callback must not be called when auto_fetch=False (D-07/D-09)."""
+        from forexfactory import _query
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            self._setup_matured_cache(cache_dir)
+
+            progress_calls = []
+
+            _query.run_query(
+                currencies=["USD"],
+                impacts=["high", "holiday"],
+                cache_dir=cache_dir,
+                auto_fetch=False,
+                progress=lambda e, **kw: progress_calls.append(e),
+            )
+
+            self.assertEqual(len(progress_calls), 0,
+                             "progress must not fire when auto_fetch=False")
+
+    def test_get_auto_fetch_false_forwarded(self):
+        """forexfactory.get(auto_fetch=False) forwards to run_query(auto_fetch=False) (D-07)."""
+        import forexfactory
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            # Settled cache — no matured months; auto_fetch=False is a no-op here
+            from forexfactory import _cache
+            _cache.ensure_dirs(cache_dir)
+            anchor = __import__("datetime").date(2026, 3, 1)
+            p = _cache.month_parquet_path(cache_dir, anchor)
+            _make_parquet(p, [_usd_high_data_row()])
+            _cache.write_manifest(cache_dir, {
+                "scope": {"currencies": ["USD"], "impacts": ["high", "holiday"]},
+                "months": {
+                    "2026-03": {"scraped_at": "2026-06-08T00:00:00Z", "settled": True},
+                },
+            })
+
+            # Should behave identically to get() with auto_fetch=True (settled cache)
+            result = forexfactory.get(
+                currencies=["USD"],
+                impacts=["high"],
+                cache_dir=cache_dir,
+                auto_fetch=False,
+            )
+            self.assertIsInstance(result, Path)
+            self.assertTrue(result.exists())
+
+
 if __name__ == "__main__":
     unittest.main()

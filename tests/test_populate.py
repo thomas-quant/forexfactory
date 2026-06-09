@@ -917,5 +917,114 @@ class PopulateForceRefreshTests(unittest.TestCase):
                       "run_populate must have a 'force_refresh' kwarg")
 
 
+class PopulateAutoFetchTests(unittest.TestCase):
+    """CACHE-05 / D-08/D-09: auto_fetch kwarg on run_populate (matured-month re-fetch)."""
+
+    def _seed_matured_cache(self, cache_dir: Path) -> None:
+        """Seed a cache with a settled:false past month and a stale forecast-only parquet."""
+        from forexfactory import _cache, _populate
+
+        _cache.ensure_dirs(cache_dir)
+        anchor = date(2026, 5, 1)
+        stale_days = [{"events": [{
+            "currency": "USD",
+            "impactName": "High Impact Expected",
+            "name": "CPI y/y",
+            "dateline": 1746057600,
+            "id": "cpi-1",
+            "leaked": False,
+            "hasDataValues": True,
+            "forecast": "4.3%",
+        }]}]
+        _populate.build_month_parquet(
+            cache_dir, anchor, stale_days,
+            currencies=["USD"], impacts=["high", "holiday"],
+        )
+        _cache.write_manifest(cache_dir, {
+            "scope": {"currencies": ["USD"], "impacts": ["high", "holiday"]},
+            "months": {
+                "2026-05": {"scraped_at": "2026-01-01T00:00:00Z", "settled": False},
+            },
+        })
+
+    def _fresh_days(self):
+        return [{"events": [{
+            "currency": "USD",
+            "impactName": "High Impact Expected",
+            "name": "CPI y/y",
+            "dateline": 1746057600,
+            "id": "cpi-1",
+            "leaked": False,
+            "hasDataValues": True,
+            "forecast": "4.3%",
+            "actual": "4.5%",
+        }]}]
+
+    def test_populate_auto_fetch_true_matures_month(self):
+        """run_populate(auto_fetch=True) re-fetches a matured settled:false month (D-08)."""
+        import pandas as pd
+        from forexfactory import _populate, _scrape, _cache
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            raw_dir = tmp_path / "raw"
+            raw_dir.mkdir()
+            cache_dir = tmp_path / "cache"
+            cache_dir.mkdir()
+            self._seed_matured_cache(cache_dir)
+
+            with patch.object(_scrape, "scrape_month", return_value=self._fresh_days()):
+                _populate.run_populate(
+                    cache_dir=cache_dir,
+                    raw_dir=str(raw_dir),
+                    auto_fetch=True,
+                    session=object(),
+                )
+
+            parquet_path = _cache.month_parquet_path(cache_dir, date(2026, 5, 1))
+            df = pd.read_parquet(parquet_path)
+            import math
+            self.assertFalse(
+                math.isnan(df.iloc[0]["actual"]),
+                "populate(auto_fetch=True) must surface actual value after matured re-fetch (D-08)",
+            )
+
+    def test_populate_auto_fetch_false_suppresses_matured(self):
+        """run_populate(auto_fetch=False) skips matured check — no network calls (D-09)."""
+        from forexfactory import _populate, _scrape
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            raw_dir = tmp_path / "raw"
+            raw_dir.mkdir()
+            cache_dir = tmp_path / "cache"
+            cache_dir.mkdir()
+            self._seed_matured_cache(cache_dir)
+
+            mock_calls = []
+
+            def counting_scrape(session, page, *, retry_delay):
+                mock_calls.append(page)
+                return []
+
+            with patch.object(_scrape, "scrape_month", side_effect=counting_scrape):
+                _populate.run_populate(
+                    cache_dir=cache_dir,
+                    raw_dir=str(raw_dir),
+                    auto_fetch=False,
+                )
+
+            self.assertEqual(len(mock_calls), 0,
+                             "auto_fetch=False must not trigger any scrape calls (D-09)")
+
+    def test_auto_fetch_signature_in_run_populate(self):
+        """run_populate() has an 'auto_fetch' keyword-only parameter (D-09)."""
+        import inspect
+        from forexfactory import _populate
+        params = inspect.signature(_populate.run_populate).parameters
+        self.assertIn("auto_fetch", params,
+                      "run_populate must have an 'auto_fetch' kwarg")
+
+
 if __name__ == "__main__":
     unittest.main()
