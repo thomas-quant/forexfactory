@@ -1,41 +1,41 @@
-# Forex Factory Economic Calendar Data Provider
+# forexfactory
 
-A pip-installable Python package that scrapes the [Forex Factory](https://www.forexfactory.com/calendar) economic calendar and serves it from a shared local parquet cache. Install once, populate once, and read the same data from any project — via a CLI or as a library.
+**Fetch the Forex Factory economic calendar once and reuse it everywhere** — a shared local parquet cache any of your projects can read, with the data fidelity needed for expected-vs-surprise analysis.
 
-## Features
-
-- **Shared local cache** — one `~/.cache/forexfactory/` directory readable from any project
-- **Browserless scraping** — `curl_cffi` TLS fingerprint impersonation, no browser automation
-- **Incremental refresh** — `forexfactory refresh` gap-fills missing months over the network; never overwrites settled months
-- **Script-friendly query** — `forexfactory query` prints only the parquet path to stdout (`PARQUET=$(forexfactory query ...)`)
-- **Library API** — `forexfactory.get(currencies=[...], impacts=[...]) -> pathlib.Path`
+[![PyPI version](https://img.shields.io/pypi/v/forexfactory.svg)](https://pypi.org/project/forexfactory/)
+[![Python versions](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue.svg)](https://pypi.org/project/forexfactory/)
+[![CI](https://img.shields.io/github/actions/workflow/status/thomas-quant/forexfactory/ci.yml?label=CI)](https://github.com/thomas-quant/forexfactory/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ## Quick Start
 
-### 1. Install
-
 ```bash
-pip install -e .
+pip install forexfactory
+forexfactory populate
+forexfactory query --currency USD --impact high
 ```
 
-### 2. Populate the Cache
+That's it. The parquet path is printed to stdout — pipe it straight into pandas.
 
-Build the parquet cache from the on-disk raw JSON files (zero network calls):
+```bash
+PARQUET=$(forexfactory query --currency USD --impact high)
+python -c "import pandas as pd; print(pd.read_parquet('$PARQUET').head())"
+```
+
+## CLI Reference
+
+### `forexfactory populate`
+
+Build the local parquet cache from on-disk raw JSON files (zero network calls by default):
 
 ```bash
 forexfactory populate
 ```
 
-Default scope: **USD** currency, **high** and **holiday** impact, all months on disk (~195 months, 2010-01 → 2026-03). Widen the scope with repeatable flags:
+Default scope: **USD** currency, **high** and **holiday** impact, all months on disk (~195 months, 2010-01 to 2026-03). Widen the scope with repeatable flags:
 
 ```bash
 forexfactory populate --currency USD --currency EUR --impact high --impact medium
-```
-
-Override the cache directory (default: `~/.cache/forexfactory/`):
-
-```bash
-forexfactory populate --cache-dir /path/to/cache
 ```
 
 Force-rebuild every month unconditionally (bypasses the manifest skip-check — use after a schema migration):
@@ -44,28 +44,7 @@ Force-rebuild every month unconditionally (bypasses the manifest skip-check — 
 forexfactory populate --force --raw-dir out
 ```
 
-### 3. Query the Cache
-
-```bash
-forexfactory query --currency USD --impact high
-```
-
-`query` prints **only** the absolute path of the result parquet to stdout — no other output — making it shell-friendly:
-
-```bash
-PARQUET=$(forexfactory query --currency USD --impact high)
-python -c "import pandas as pd; print(pd.read_parquet('$PARQUET').head())"
-```
-
-By default `query` returns **data-bearing events** (with `forecast`/`actual` fields) and **bank holidays**. To include speeches and other no-data events:
-
-```bash
-forexfactory query --currency USD --impact high --include-no-data
-```
-
-If the requested currency/impact combination has not been populated, `query` exits non-zero and prints actionable guidance to stderr (run `forexfactory populate --currency ... --impact ...` first).
-
-### 4. Refresh (Network)
+### `forexfactory refresh`
 
 Fetch months not yet in the cache from Forex Factory over the network:
 
@@ -73,7 +52,40 @@ Fetch months not yet in the cache from Forex Factory over the network:
 forexfactory refresh
 ```
 
-By default `refresh` gap-fills from the last cached month through the current month, with a polite 1-second delay between requests. It does not overwrite already-cached months.
+Gap-fills from the last cached month through the current month with a polite 1-second delay between requests. Does not overwrite already-settled months.
+
+### `forexfactory query`
+
+Print the absolute path of the result parquet to stdout — nothing else — making it shell-friendly:
+
+```bash
+forexfactory query --currency USD --impact high
+```
+
+By default returns data-bearing events (with `forecast`/`actual` fields) and bank holidays. To include speeches and other no-data events:
+
+```bash
+forexfactory query --currency USD --impact high --include-no-data
+```
+
+If the requested currency/impact combination has not been populated, the command exits non-zero and prints actionable guidance to stderr.
+
+### `forexfactory status`
+
+Report cache location, date range, scope, schema version, and settled/matured state:
+
+```bash
+forexfactory status
+forexfactory status --json   # machine-readable JSON
+```
+
+### `forexfactory --version`
+
+Print the installed package version:
+
+```bash
+forexfactory --version
+```
 
 ## Library API
 
@@ -85,6 +97,20 @@ path: Path = forexfactory.get(currencies=["USD"], impacts=["high"])
 
 import pandas as pd
 df = pd.read_parquet(path)
+```
+
+`forexfactory.get(...)` returns a `pathlib.Path` to a filtered parquet file in the local cache. All parameters are keyword-only:
+
+```python
+path = forexfactory.get(
+    currencies=["USD"],          # list of currency codes (default: ["USD"])
+    impacts=["high"],            # list of impact levels (default: ["high", "holiday"])
+    start="2024-01",             # first month to include (YYYY-MM, optional)
+    end="2024-12",               # last month to include (YYYY-MM, optional)
+    include_no_data=False,       # include speeches and no-data events (default: False)
+    cache_dir=None,              # override cache directory (default: ~/.cache/forexfactory)
+    auto_fetch=True,             # auto-refresh matured months before returning (default: True)
+)
 ```
 
 ## Output Schema
@@ -140,8 +166,6 @@ The cache lives at `~/.cache/forexfactory/` by default (override with `--cache-d
 ```
 ~/.cache/forexfactory/
 |-- manifest.json          # populated scope + per-month provenance
-|-- raw/                   # staging JSON (temporary; removed in Phase 2)
-|   `-- days_YYYY_MM.json
 |-- queries/               # per-scope result parquets
 |   `-- USD_high_....parquet
 `-- YYYY-MM.parquet        # one file per calendar month
@@ -154,6 +178,9 @@ forexfactory/
 |-- pyproject.toml
 |-- requirements.txt
 |-- README.md
+|-- LICENSE
+|-- CHANGELOG.md
+|-- CONTRIBUTING.md
 |-- src/forexfactory/
 |   |-- __init__.py
 |   |-- cli.py
@@ -162,7 +189,8 @@ forexfactory/
 |   |-- _populate.py
 |   |-- _query.py
 |   |-- _refresh.py
-|   `-- _scrape.py
+|   |-- _scrape.py
+|   `-- py.typed
 |-- tests/
 |   |-- test_cache.py
 |   |-- test_cli.py
@@ -175,27 +203,9 @@ forexfactory/
 `-- out/                    # optional raw-staging dir (populated on re-scrape)
 ```
 
-## Performance
-
-For **2021-01-01 → 2021-06-30**:
-
-| Scraper | Time | Notes |
-|---------|------|-------|
-| `scrape_selenium.py` | 16.5s | legacy `undetected-chromedriver` figure from the old README |
-| old nodriver `scrape.py` | 10.3s | legacy nodriver figure from the old README |
-| current `curl_cffi` scraper | **6.171s** | current implementation |
-
-Stepwise speedups on that same 6-month span:
-
-- nodriver was **37.6% faster** than `undetected-chromedriver`
-- `curl_cffi` is **40.1% faster** than nodriver
-- `curl_cffi` is **62.6% faster** than `undetected-chromedriver` overall
-
-The current scraper also matched the old headed nodriver output exactly on the tested 6-month comparison span.
-
 ## Data Source
 
-Data is scraped from the Forex Factory economic calendar. This tool is for personal/research use. Please respect their terms of service and rate limits.
+Data is scraped from the [Forex Factory](https://www.forexfactory.com/calendar) economic calendar. For personal/research use — please respect their terms of service and rate limits.
 
 ## License
 

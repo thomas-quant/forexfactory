@@ -19,7 +19,8 @@ def test_project_structure_chart_uses_plain_ascii_and_matches_repo_layout():
     assert "|-- src/forexfactory/" in text
     assert "|   |-- __init__.py" in text
     assert "|   |-- cli.py" in text
-    assert "|   `-- _scrape.py" in text
+    assert "|   |-- _scrape.py" in text
+    assert "|   `-- py.typed" in text
 
     # Tests directory
     assert "|-- tests/" in text
