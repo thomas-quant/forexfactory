@@ -458,7 +458,7 @@ class SurpriseMissingColumnTests(unittest.TestCase):
 
 
 class SurpriseZMissingColumnTests(unittest.TestCase):
-    """surprise_z() must return all-NaN row-aligned Series when required columns are absent (D-03)."""
+    """surprise_z() returns all-NaN row-aligned Series when required columns are absent (D-03)."""
 
     def test_missing_ebaseid_returns_all_nan(self):
         """Frame with actual+forecast but no 'ebaseId' -> all-NaN, no raise."""

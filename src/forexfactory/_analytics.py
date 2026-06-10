@@ -23,9 +23,12 @@ def surprise(df: pd.DataFrame) -> pd.Series:
     """Return raw actual − forecast for every row, row-aligned to df.index.
 
     Satisfies D-01 (raw arithmetic, no polarity adjustment) and D-03 (NaN-propagate,
-    never raise, output index equals input index).  pandas column subtraction is
-    inherently row-aligned and NaN-propagating, so no extra guards are needed.
+    never raise, output index equals input index).  When 'actual' or 'forecast' columns
+    are absent the entire Series is NaN; pandas column subtraction is otherwise
+    inherently row-aligned and NaN-propagating.
     """
+    if "actual" not in df.columns or "forecast" not in df.columns:
+        return pd.Series(float("nan"), index=df.index)
     return df["actual"] - df["forecast"]
 
 
@@ -43,6 +46,9 @@ def surprise_z(df: pd.DataFrame) -> pd.Series:
     Output Series is reindexed to df.index so row count and order are preserved even
     when the groupby transform drops or reorders anything.
     """
+    if "ebaseId" not in df.columns:
+        return pd.Series(float("nan"), index=df.index)
+
     if df.empty:
         return pd.Series(dtype=float)
 
