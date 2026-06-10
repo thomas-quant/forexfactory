@@ -4,16 +4,47 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "forexfactory"
-version = "0.1.0"
+version = "1.1.0"
+description = "Cached Forex Factory economic calendar data provider"
+authors = [{name = "Thomas Quant"}]
+license = {text = "MIT"}
 requires-python = ">=3.12"
+keywords = [
+    "forex-factory",
+    "economic-calendar",
+    "parquet",
+    "cache",
+    "scraper",
+    "finance",
+    "trading",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Office/Business :: Financial",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
 dependencies = [
     "curl_cffi>=0.13.0",
     "pandas>=2.0.0",
     "pyarrow>=14.0.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/thomas-quant/forexfactory"
+Repository = "https://github.com/thomas-quant/forexfactory"
+
 [project.scripts]
 forexfactory = "forexfactory.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"forexfactory" = ["py.typed"]
