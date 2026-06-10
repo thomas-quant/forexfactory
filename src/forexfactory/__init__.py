@@ -14,18 +14,24 @@ Usage:
 """
 
 from pathlib import Path
+from importlib.metadata import version, PackageNotFoundError
 
-__version__ = "0.1.0"
+try:
+    __version__: str = version("forexfactory")
+except PackageNotFoundError:  # pragma: no cover - exercised in non-installed environments
+    __version__ = "0.0.0"
+
+__all__ = ["get", "populate", "__version__"]
 
 
 def get(
     *,
-    currencies=None,
-    impacts=None,
-    start=None,
-    end=None,
-    include_no_data=False,
-    cache_dir=None,
+    currencies: list[str] | None = None,
+    impacts: list[str] | None = None,
+    start: str | None = None,
+    end: str | None = None,
+    include_no_data: bool = False,
+    cache_dir: Path | None = None,
     auto_fetch: bool = True,
 ) -> Path:
     """Return a Path to a filtered Parquet file from the local cache.
@@ -53,16 +59,16 @@ def get(
 
 def populate(
     *,
-    currencies=None,
-    impacts=None,
-    start=None,
-    end=None,
-    raw_dir=None,
-    cache_dir=None,
-    force=False,
-    force_refresh=False,
+    currencies: list[str] | None = None,
+    impacts: list[str] | None = None,
+    start: str | None = None,
+    end: str | None = None,
+    raw_dir: str | Path | None = None,
+    cache_dir: Path | None = None,
+    force: bool = False,
+    force_refresh: bool = False,
     auto_fetch: bool = True,
-) -> dict:
+) -> dict[str, int]:
     """Populate or refresh the local cache; library mirror of the populate CLI command.
 
     With force_refresh=False (default): reads on-disk raw JSON and builds parquet.
@@ -81,7 +87,7 @@ def populate(
                     cache-only — no automatic network activity.
     """
     from . import _populate  # noqa: PLC0415 — intentional lazy import
-    kwargs = dict(
+    kwargs: dict[str, object] = dict(
         currencies=currencies,
         impacts=impacts,
         start=start,
