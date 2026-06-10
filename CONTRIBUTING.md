@@ -15,7 +15,7 @@ Clone the repository and install the package in editable mode with dev dependenc
 pip install -e ".[dev]"
 ```
 
-This installs `ruff`, `mypy`, `pytest`, and `pandas-stubs` alongside the package itself.
+This installs `ruff`, `mypy`, `pytest`, and `pandas-stubs`, plus `build` and `twine` (used by the release pipeline), alongside the package itself.
 
 ## Running the Checks
 
