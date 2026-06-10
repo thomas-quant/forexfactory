@@ -359,7 +359,7 @@ class FlattenEventsWidenedTests(unittest.TestCase):
         self.assertEqual(r["revision_raw"], "")
 
     def test_all_phase2_source_keys_present(self):
-        """All source keys that produce the 19 PHASE2_COLUMNS must be in the yielded dict."""
+        """All source keys that produce the PHASE2_COLUMNS must be in the yielded dict."""
         r = self._flatten_one()
         expected_keys = [
             "date",
@@ -382,16 +382,37 @@ class FlattenEventsWidenedTests(unittest.TestCase):
             "ebaseId",
             "country",
             "hasDataValues",
+            "siteId",
         ]
         for key in expected_keys:
             self.assertIn(key, r, f"key '{key}' missing from flatten_events output")
 
     def test_ui_fields_not_in_output(self):
-        """DATA-04: UI/internal fields (checker, soloTitle, siteId) must be absent."""
+        """DATA-04: UI/internal fields (checker, soloTitle) must be absent; siteId is captured."""
         r = self._flatten_one()
         self.assertNotIn("checker", r)
         self.assertNotIn("soloTitle", r)
-        self.assertNotIn("siteId", r)
+
+    def test_site_id_captured_when_present(self):
+        """siteId from the FF event is captured in the yielded dict (DATA-06 / D-12)."""
+        r = self._flatten_one()
+        self.assertIn("siteId", r)
+        self.assertEqual(r["siteId"], 42)
+
+    def test_site_id_none_when_absent(self):
+        """siteId is None when the FF event does not carry the field (nullable contract)."""
+        ev_no_site_id = {
+            "currency": "USD",
+            "impactName": "High Impact Expected",
+            "prefixedName": "US CPI y/y",
+            "dateline": 1772368200,
+            "id": 1,
+            "hasDataValues": True,
+        }
+        days = [{"events": [ev_no_site_id]}]
+        r = list(pipeline.flatten_events(days))[0]
+        self.assertIn("siteId", r)
+        self.assertIsNone(r["siteId"])
 
     def test_actual_better_worse_preserved(self):
         """actualBetterWorse integer value is passed through unchanged."""
@@ -421,6 +442,7 @@ class FlattenEventsWidenedTests(unittest.TestCase):
         self.assertIn("hasDataValues", pipeline.PHASE2_COLUMNS)
         self.assertIn("ebaseId", pipeline.PHASE2_COLUMNS)
         self.assertIn("actualBetterWorse", pipeline.PHASE2_COLUMNS)
+        self.assertIn("siteId", pipeline.PHASE2_COLUMNS, "siteId must be in PHASE2_COLUMNS (D-13)")
 
     def test_solo_title_not_used_as_title_fallback(self):
         """soloTitle must NOT be used as title fallback (it is in the DATA-04 drop list)."""

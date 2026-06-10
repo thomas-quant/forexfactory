@@ -987,5 +987,95 @@ class QueryScopeMissAutoWidenTests(unittest.TestCase):
                 )
 
 
+# ---------------------------------------------------------------------------
+# DATA-06: siteId always-present in query output (D-15) + SCHEMA_VERSION (D-14)
+# ---------------------------------------------------------------------------
+
+
+class QuerySiteIdTests(unittest.TestCase):
+    """DATA-06 / D-15: siteId always present in run_query result; D-14 SCHEMA_VERSION."""
+
+    def _setup_cache_without_siteid(self, cache_dir: Path) -> None:
+        """Write a legacy parquet WITHOUT siteId column + manifest."""
+        from forexfactory import _cache
+
+        _cache.ensure_dirs(cache_dir)
+        anchor = date(2026, 3, 1)
+        p = _cache.month_parquet_path(cache_dir, anchor)
+        # Write a parquet that lacks siteId — simulates a pre-bump month
+        _make_parquet(p, [_usd_high_data_row()])
+        _cache.write_manifest(
+            cache_dir,
+            {
+                "scope": {"currencies": ["USD"], "impacts": ["high", "holiday"]},
+                "months": {
+                    "2026-03": {"scraped_at": "2026-06-08T00:00:00Z", "settled": True},
+                },
+            },
+        )
+
+    def _setup_cache_with_siteid(self, cache_dir: Path) -> None:
+        """Write a parquet WITH siteId column + manifest."""
+        from forexfactory import _cache
+
+        _cache.ensure_dirs(cache_dir)
+        anchor = date(2026, 3, 1)
+        p = _cache.month_parquet_path(cache_dir, anchor)
+        row = _usd_high_data_row()
+        row["siteId"] = 42
+        _make_parquet(p, [row])
+        _cache.write_manifest(
+            cache_dir,
+            {
+                "scope": {"currencies": ["USD"], "impacts": ["high", "holiday"]},
+                "months": {
+                    "2026-03": {"scraped_at": "2026-06-08T00:00:00Z", "settled": True},
+                },
+            },
+        )
+
+    def test_siteid_present_when_parquet_lacks_column(self):
+        """Result always has siteId column (all null) even if parquet was written before bump (D-15)."""
+        from forexfactory import _query
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            self._setup_cache_without_siteid(cache_dir)
+
+            result = _query.run_query(
+                currencies=["USD"],
+                impacts=["high"],
+                cache_dir=cache_dir,
+            )
+
+            df = pd.read_parquet(result)
+            self.assertIn("siteId", df.columns, "siteId must always be in query result columns (D-15)")
+            self.assertTrue(df["siteId"].isna().all(), "siteId must be all-null for legacy parquets")
+
+    def test_siteid_values_preserved_when_parquet_has_column(self):
+        """siteId values in the parquet are preserved in the query result (D-15)."""
+        from forexfactory import _query
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            self._setup_cache_with_siteid(cache_dir)
+
+            result = _query.run_query(
+                currencies=["USD"],
+                impacts=["high"],
+                cache_dir=cache_dir,
+            )
+
+            df = pd.read_parquet(result)
+            self.assertIn("siteId", df.columns, "siteId must be in result when parquet has it")
+            self.assertEqual(int(df.iloc[0]["siteId"]), 42, "siteId value must be preserved")
+
+    def test_schema_version_is_three(self):
+        """SCHEMA_VERSION reports '3' after the Phase-5 siteId bump (D-14)."""
+        from forexfactory import _cache
+
+        self.assertEqual(_cache.SCHEMA_VERSION, "3", "SCHEMA_VERSION must be '3' (D-14)")
+
+
 if __name__ == "__main__":
     unittest.main()
