@@ -19,11 +19,12 @@ Usage::
     PARQUET=$(forexfactory query --currency USD --impact high)
 """
 import argparse
+import json
 import logging
 import sys
 from pathlib import Path
 
-from forexfactory import _populate, _query, _refresh, _scrape
+from forexfactory import __version__, _cache, _populate, _query, _refresh, _scrape
 from forexfactory._exceptions import AutoFetchError
 
 # ====== CONFIG ======
@@ -89,6 +90,11 @@ def main(argv: list[str] | None = None) -> int:
         description="Forex Factory economic calendar cache provider",
     )
     subparsers = parser.add_subparsers(dest="command")
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+    )
 
     # ── populate ─────────────────────────────────────────────────────────────
     pop = subparsers.add_parser(
@@ -248,15 +254,35 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
 
+    # ── status ────────────────────────────────────────────────────────────────
+    sts = subparsers.add_parser(
+        "status",
+        help=(
+            "Report cache location, date range, scope, schema version, "
+            "and settled/matured state (CLI-02 / D-05)"
+        ),
+    )
+    sts.add_argument(
+        "--cache-dir", default=None, metavar="DIR",
+        help="Override cache directory (default: ~/.cache/forexfactory) [CACHE-01]",
+    )
+    sts.add_argument(
+        "--json",
+        action="store_true",
+        default=False,
+        help="Output machine-readable JSON instead of aligned text (D-05)",
+    )
+
     args = parser.parse_args(argv)
 
     if args.command is None:
         parser.print_help(sys.stderr)
         sys.exit(1)
 
-    # Validate optional YYYY-MM month strings
-    _validate_month(args.start, "--start")
-    _validate_month(args.end, "--end")
+    # Validate optional YYYY-MM month strings (status has no --start/--end args)
+    if hasattr(args, "start"):
+        _validate_month(args.start, "--start")
+        _validate_month(args.end, "--end")
 
     # ── dispatch ──────────────────────────────────────────────────────────────
     if args.command == "refresh":
@@ -327,6 +353,55 @@ def main(argv: list[str] | None = None) -> int:
 
         # D-10: stdout = ONLY the absolute path (plus any D-12 banners); diagnostics → logger
         print(path)
+        return 0
+
+    if args.command == "status":
+        cache_dir = Path(args.cache_dir) if args.cache_dir is not None else None
+        resolved = _cache.resolve_cache_dir(cache_dir)
+        manifest = _cache.read_manifest(resolved)
+
+        if not manifest or not manifest.get("months"):
+            print("cache is empty — run `forexfactory populate`")
+            return 0
+
+        months = manifest.get("months", {})
+        scope = manifest.get("scope", {})
+        start = min(months)
+        end = max(months)
+        count = len(months)
+        settled = sum(1 for v in months.values() if v.get("settled"))
+        unsettled = count - settled
+        schema_version = manifest.get("schema_version", _cache.SCHEMA_VERSION)
+
+        status_data = {
+            "cache_dir": str(resolved),
+            "schema_version": schema_version,
+            "scope": {
+                "currencies": scope.get("currencies", []),
+                "impacts": scope.get("impacts", []),
+            },
+            "date_range": {
+                "start": start,
+                "end": end,
+                "count": count,
+            },
+            "settled": settled,
+            "unsettled": unsettled,
+        }
+
+        if args.json:
+            print(json.dumps(status_data, indent=2))
+        else:
+            currencies_str = ", ".join(status_data["scope"]["currencies"])
+            impacts_str = ", ".join(status_data["scope"]["impacts"])
+            print(f"cache dir    : {status_data['cache_dir']}")
+            print(f"schema ver   : {status_data['schema_version']}")
+            print(f"scope        : currencies=[{currencies_str}] impacts=[{impacts_str}]")
+            print(
+                f"date range   : {start} — {end} ({count} month{'s' if count != 1 else ''})"
+            )
+            print(f"settled      : {settled} month{'s' if settled != 1 else ''}")
+            print(f"unsettled    : {unsettled} month{'s' if unsettled != 1 else ''}")
         return 0
 
     return 0
