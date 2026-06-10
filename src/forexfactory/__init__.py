@@ -89,7 +89,19 @@ def populate(
     """
     from . import _populate  # noqa: PLC0415 — intentional lazy import
 
-    kwargs: dict[str, object] = dict(
+    if raw_dir is not None:
+        return _populate.run_populate(
+            currencies=currencies,
+            impacts=impacts,
+            start=start,
+            end=end,
+            raw_dir=str(raw_dir),
+            cache_dir=cache_dir,
+            force=force,
+            force_refresh=force_refresh,
+            auto_fetch=auto_fetch,
+        )
+    return _populate.run_populate(
         currencies=currencies,
         impacts=impacts,
         start=start,
@@ -99,6 +111,3 @@ def populate(
         force_refresh=force_refresh,
         auto_fetch=auto_fetch,
     )
-    if raw_dir is not None:
-        kwargs["raw_dir"] = raw_dir
-    return _populate.run_populate(**kwargs)

@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def _print_progress(event: str, **kwargs) -> None:
+def _print_progress(event: str, **kwargs: object) -> None:
     """Print a D-12 progress banner to stdout for auto-fetch events.
 
     Invoked by run_query before each auto-fetch begins so the banner precedes

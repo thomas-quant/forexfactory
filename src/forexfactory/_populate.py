@@ -21,6 +21,7 @@ import logging
 import os
 from datetime import UTC, date, datetime
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -46,7 +47,7 @@ logger = logging.getLogger(__name__)
 def build_month_parquet(
     cache_dir: Path,
     anchor: date,
-    days: list,
+    days: list[Any],
     *,
     currencies: list[str],
     impacts: list[str],
@@ -122,8 +123,8 @@ def run_populate(
     force: bool = False,
     force_refresh: bool = False,
     auto_fetch: bool = True,
-    session=None,
-) -> dict:
+    session: Any = None,
+) -> dict[str, int]:
     """Populate the cache from on-disk raw JSON files.
 
     With auto_fetch=True (default), auto-refreshes matured months over the network

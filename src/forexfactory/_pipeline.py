@@ -16,7 +16,9 @@ import glob
 import json
 import os
 import re
+from collections.abc import Generator, Iterator
 from datetime import UTC, datetime
+from typing import Any, Literal
 
 import pandas as pd
 
@@ -27,7 +29,7 @@ CLEAN_CSV = "ff_usd_high_holiday_clean.csv"  # output from sanitize step
 OUT_PARQUET = "economic_events.parquet"  # final parquet output
 KEEP_CURRENCIES = {"USD"}  # only USD
 KEEP_IMPACTS = {"high", "holiday"}  # red folder + bank holidays
-PARQUET_COMPRESSION = "zstd"
+PARQUET_COMPRESSION: Literal["zstd"] = "zstd"
 PARQUET_COMPRESSION_LEVEL = 3
 # Phase-2 full analytical schema — final parquet column order (D-01, DATA-02/03/04).
 # Imported by _populate.py and _query.py to prevent stale-column-list drift (RESEARCH Pitfall 3).
@@ -74,7 +76,7 @@ _SUFFIX_MAP: dict[str, float] = {
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def load_days_files(in_dir: str):
+def load_days_files(in_dir: str) -> Iterator[tuple[str, list[Any]]]:
     """Yield (path, days_list) for each days_*.json file."""
     paths = sorted(glob.glob(os.path.join(in_dir, "days_*.json")))
     for p in paths:
@@ -103,7 +105,7 @@ def norm_impact(s: str) -> str:
     return s
 
 
-def to_iso(dt_epoch: int | float | None):
+def to_iso(dt_epoch: int | float | None) -> tuple[str, str]:
     """Convert epoch seconds (UTC) to (date_iso, time_utc)."""
     if not dt_epoch:
         return "", ""
@@ -140,7 +142,9 @@ def _parse_value(s: str) -> float:
     return num
 
 
-def flatten_events(days, src_path=None):
+def flatten_events(
+    days: list[Any], src_path: str | None = None
+) -> Generator[dict[str, Any], None, None]:
     """Flatten nested days/events structure into individual event dicts.
 
     Phase 2: yields 20 source keys — the 19 PHASE2_COLUMNS fields (with date +
@@ -192,7 +196,7 @@ def flatten_events(days, src_path=None):
             }
 
 
-def _deduplicate_rows(rows: list[dict]) -> list[dict]:
+def _deduplicate_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Deduplicate event rows and return them sorted by (date, time_utc, title).
 
     Keyed by (id, date, time_utc) when id is truthy; falls back to
@@ -214,8 +218,8 @@ def _deduplicate_rows(rows: list[dict]) -> list[dict]:
 def parse_json_to_csv(
     in_dir: str = IN_DIR,
     out_csv: str = PARSED_CSV,
-    keep_currencies: set = KEEP_CURRENCIES,
-    keep_impacts: set = KEEP_IMPACTS,
+    keep_currencies: set[str] = KEEP_CURRENCIES,
+    keep_impacts: set[str] = KEEP_IMPACTS,
 ) -> str:
     """Parse all days_*.json files and write filtered events to CSV."""
     rows = []
@@ -248,7 +252,7 @@ def parse_json_to_csv(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def should_keep_row(row: dict) -> bool:
+def should_keep_row(row: dict[str, Any]) -> bool:
     """Return True if the row should be kept (no 'speaks' in title)."""
     title = (row.get("title") or "").lower()
     return "speaks" not in title
@@ -262,7 +266,7 @@ def sanitize_csv(in_csv: str = PARSED_CSV, out_csv: str = CLEAN_CSV) -> str:
     with open(in_csv, encoding="utf-8", newline="") as f_in:
         reader = csv.DictReader(f_in)
         rows = [r for r in reader if should_keep_row(r)]
-        fieldnames = reader.fieldnames
+        fieldnames = reader.fieldnames or []
 
     with open(out_csv, "w", encoding="utf-8", newline="") as f_out:
         w = csv.DictWriter(f_out, fieldnames=fieldnames)
@@ -278,7 +282,7 @@ def sanitize_csv(in_csv: str = PARSED_CSV, out_csv: str = CLEAN_CSV) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def csv_to_parquet(csv_path: str, parquet_path: str = None) -> str:
+def csv_to_parquet(csv_path: str, parquet_path: str | None = None) -> str:
     """Convert CSV to Parquet, combining date+time into datetime_utc column."""
     if parquet_path is None:
         parquet_path = os.path.splitext(csv_path)[0] + ".parquet"
@@ -323,8 +327,8 @@ def run_pipeline(
     out_parquet: str = OUT_PARQUET,
     *,
     in_dir: str = IN_DIR,
-    keep_currencies: set = KEEP_CURRENCIES,
-    keep_impacts: set = KEEP_IMPACTS,
+    keep_currencies: set[str] = KEEP_CURRENCIES,
+    keep_impacts: set[str] = KEEP_IMPACTS,
 ) -> None:
     """Run full pipeline in memory: JSON -> filtered -> sanitized -> Parquet.
 
@@ -363,7 +367,7 @@ def run_pipeline(
     print(f"[done] {len(df)} rows -> {out_parquet}")
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Forex Factory Economic Events Pipeline",
         formatter_class=argparse.RawDescriptionHelpFormatter,

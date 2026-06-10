@@ -33,6 +33,7 @@ import os
 import time
 from datetime import UTC, date, datetime
 from pathlib import Path
+from typing import Any
 
 from forexfactory import _cache, _populate, _scrape
 
@@ -51,11 +52,11 @@ def run_refresh(
     start: str | None = None,
     end: str | None = None,
     cache_dir: Path | None = None,
-    session=None,
+    session: Any = None,
     between_pages_delay: float | None = None,
     retry_delay: float | None = None,
     force_refresh: bool = False,
-) -> dict:
+) -> dict[str, int]:
     """Fetch months not yet cached over the network; stage raw + build parquet.
 
     Args:
@@ -186,12 +187,12 @@ def run_refresh(
 
 
 def refresh_matured_months(
-    cache_dir,
+    cache_dir: Path | None,
     *,
-    session=None,
+    session: Any = None,
     between_pages_delay: float | None = None,
     retry_delay: float | None = None,
-) -> dict:
+) -> dict[str, int]:
     """Re-fetch all manifest months with settled:false that have since fully matured (CACHE-05).
 
     Reads the manifest scope once and re-fetches every matured month at that FULL scope so
@@ -274,11 +275,11 @@ def refresh_matured_months(
 
 
 def widen_scope_to_cover(
-    cache_dir,
-    currencies,
-    impacts,
+    cache_dir: Path | None,
+    currencies: list[str],
+    impacts: list[str],
     *,
-    session=None,
+    session: Any = None,
     between_pages_delay: float | None = None,
     retry_delay: float | None = None,
 ) -> None:
@@ -345,7 +346,7 @@ def widen_scope_to_cover(
 # ---------------------------------------------------------------------------
 
 
-def _compute_date_range(cache_dir: Path, start: str | None, end: str | None):
+def _compute_date_range(cache_dir: Path, start: str | None, end: str | None) -> tuple[date, date]:
     """Return (start_date, end_date) for the refresh run.
 
     If start/end provided: parse and use them.

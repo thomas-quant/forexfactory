@@ -102,7 +102,8 @@ def read_manifest(cache_dir: Path) -> dict[str, Any]:
     path = manifest_path(cache_dir)
     try:
         with open(path, encoding="utf-8") as fh:
-            return json.load(fh)
+            result: dict[str, Any] = json.load(fh)
+            return result
     except FileNotFoundError:
         return {}
     except json.JSONDecodeError:
@@ -138,8 +139,8 @@ def update_manifest_month(
     *,
     scraped_at: str,
     settled: bool,
-    currencies: list,
-    impacts: list,
+    currencies: list[str],
+    impacts: list[str],
 ) -> dict[str, Any]:
     """Read manifest, record scope + per-month provenance, write back, return manifest.
 
@@ -164,7 +165,7 @@ def update_manifest_month(
     return manifest
 
 
-def _scope_covers(scope: dict, currencies: list, impacts: list) -> bool:
+def _scope_covers(scope: dict[str, Any], currencies: list[str], impacts: list[str]) -> bool:
     """Return True iff every requested currency and impact is in the manifest scope."""
     cached_currencies = scope.get("currencies", [])
     cached_impacts = scope.get("impacts", [])

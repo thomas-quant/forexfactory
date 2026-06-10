@@ -16,6 +16,7 @@ import os
 import re
 import sys
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -23,7 +24,7 @@ from typing import Any
 try:
     from curl_cffi import requests as curl_requests
 except ImportError:  # pragma: no cover - exercised by users without dependency
-    curl_requests = None
+    curl_requests = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +68,7 @@ class ScrapeResult:
     skip_count: int
 
 
-def month_iter(start: date, end: date):
+def month_iter(start: date, end: date) -> Iterator[date]:
     """Iterate through month anchors from start to end date."""
     cur = start.replace(day=1)
     while cur <= end:
@@ -252,7 +253,7 @@ def _extract_assigned_state_objects(html: str) -> dict[str, Any]:
     return states
 
 
-def _select_best_days(states: dict[str, Any]) -> list:
+def _select_best_days(states: dict[str, Any]) -> list[Any]:
     candidates = []
     for key, state in states.items():
         if isinstance(state, dict) and isinstance(state.get("days"), list):
@@ -264,10 +265,11 @@ def _select_best_days(states: dict[str, Any]) -> list:
         return []
 
     candidates.sort(reverse=True)
-    return candidates[0][3]
+    result: list[Any] = candidates[0][3]
+    return result
 
 
-def _extract_days_array_from_state_object(raw: str) -> list:
+def _extract_days_array_from_state_object(raw: str) -> list[Any]:
     """Extract and parse only the `days` array from a JS state object."""
     match = re.search(r"([,{]\s*)days\s*:", raw)
     if not match:
@@ -278,10 +280,11 @@ def _extract_days_array_from_state_object(raw: str) -> list:
         return []
 
     array_end = _find_matching_bracket(raw, array_start)
-    return json.loads(raw[array_start : array_end + 1])
+    parsed: list[Any] = json.loads(raw[array_start : array_end + 1])
+    return parsed
 
 
-def extract_days(html: str) -> list:
+def extract_days(html: str) -> list[Any]:
     """Extract the most complete `days` list from Forex Factory HTML."""
     try:
         state_json = _extract_state_json(html)
@@ -294,7 +297,7 @@ def extract_days(html: str) -> list:
     return _select_best_days(states)
 
 
-def build_session():
+def build_session() -> Any:
     """Create a curl_cffi session."""
     if curl_requests is None:
         raise RuntimeError("curl_cffi is required. Install it with: pip install curl_cffi")
@@ -302,12 +305,12 @@ def build_session():
 
 
 def scrape_month(
-    session,
+    session: Any,
     page: MonthPage,
     *,
     max_attempts: int = MAX_ATTEMPTS,
     retry_delay: float = RETRY_DELAY,
-) -> list:
+) -> list[Any]:
     """Fetch a month page and return extracted days."""
     last_error: Exception | None = None
 
@@ -345,7 +348,7 @@ def run_scraper(
     pages: list[MonthPage],
     *,
     out_dir: str = OUT_DIR,
-    session=None,
+    session: Any = None,
     between_pages_delay: float = BETWEEN_PAGES_DELAY,
     retry_delay: float = RETRY_DELAY,
 ) -> ScrapeResult:
@@ -388,7 +391,7 @@ def run_scraper(
     return ScrapeResult(success_count=success_count, fail_count=fail_count, skip_count=skip_count)
 
 
-def parse_args(argv: list[str] | None = None):
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Forex Factory scraper using curl_cffi")
     # QUAL-04: stale hardcoded date defaults removed; dates are now
     # required (default=None); refresh computes its range dynamically in _refresh.py.

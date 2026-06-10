@@ -16,6 +16,7 @@ import re
 from collections.abc import Callable
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -40,8 +41,8 @@ def _safe_token(token: str) -> str:
 
 
 def _result_filename(
-    currencies: list,
-    impacts: list,
+    currencies: list[str],
+    impacts: list[str],
     start: str | None,
     end: str | None,
 ) -> str:
@@ -57,10 +58,10 @@ def _result_filename(
 
 
 def _filter_months_by_range(
-    month_keys: list,
+    month_keys: list[str],
     start: str | None,
     end: str | None,
-) -> list:
+) -> list[str]:
     """Return month_keys (YYYY-MM strings) narrowed to [start, end], inclusive."""
     if start is None and end is None:
         return month_keys
@@ -75,17 +76,17 @@ def _filter_months_by_range(
 
 
 def _raise_scope_error(
-    currencies: list,
-    impacts: list,
-    scope: dict,
+    currencies: list[str],
+    impacts: list[str],
+    scope: dict[str, Any],
 ) -> None:
     """Raise ValueError with actionable populate guidance for each uncovered pair (D-09).
 
     Example message:
         EUR/medium not populated — run: forexfactory populate --currency EUR --impact medium
     """
-    cached_currencies: set = set(scope.get("currencies", []))
-    cached_impacts: set = set(scope.get("impacts", []))
+    cached_currencies: set[str] = set(scope.get("currencies", []))
+    cached_impacts: set[str] = set(scope.get("impacts", []))
 
     messages = []
     for c in currencies:
@@ -110,15 +111,15 @@ def _raise_scope_error(
 
 def run_query(
     *,
-    currencies: list | None = None,
-    impacts: list | None = None,
+    currencies: list[str] | None = None,
+    impacts: list[str] | None = None,
     start: str | None = None,
     end: str | None = None,
     include_no_data: bool = False,
     cache_dir: Path | None = None,
     auto_fetch: bool = True,
-    session=None,
-    progress: Callable | None = None,
+    session: Any = None,
+    progress: Callable[..., None] | None = None,
 ) -> Path:
     """Read per-month cache parquets, filter, write and return a consolidated result parquet.
 
@@ -184,8 +185,8 @@ def run_query(
 
             # D-12: fire progress("scope_miss", ...) for each uncovered pair BEFORE fetching
             if progress is not None:
-                cached_currencies: set = set(scope.get("currencies", []))
-                cached_impacts: set = set(scope.get("impacts", []))
+                cached_currencies: set[str] = set(scope.get("currencies", []))
+                cached_impacts: set[str] = set(scope.get("impacts", []))
                 for c in currencies:
                     for i in impacts:
                         if c not in cached_currencies or i not in cached_impacts:
