@@ -37,16 +37,20 @@ def test_version_is_1_1_0():
 
 
 def test_all_lists_exact_public_surface():
-    """__all__ must be exactly ['get', 'populate', 'surprise', 'surprise_z', '__version__'].
+    """__all__ must be exactly ['get', 'read', 'populate', 'surprise', 'surprise_z', '__version__'].
 
-    Plan 02 (05-02) adds surprise and surprise_z (API-02, API-03 / D-09).
-    Plan 03 will add 'read' (API-01); update this test then.
+    Plan 03 (05-03) adds read (API-01 / D-08).
     """
     import forexfactory
 
-    assert forexfactory.__all__ == ["get", "populate", "surprise", "surprise_z", "__version__"], (
-        f"__all__ mismatch: {forexfactory.__all__}"
-    )
+    assert forexfactory.__all__ == [
+        "get",
+        "read",
+        "populate",
+        "surprise",
+        "surprise_z",
+        "__version__",
+    ], (f"__all__ mismatch: {forexfactory.__all__}")
 
 
 def test_get_parameters_are_annotated():
@@ -113,6 +117,39 @@ def test_populate_returns_dict_of_str_int():
     # Verify it is a generic alias for dict[str, int]
     assert hasattr(ret, "__origin__") or isinstance(ret, type), (
         f"populate() return annotation '{ret}' should be dict[str, int]"
+    )
+
+
+def test_read_is_accessible_on_module():
+    """forexfactory.read must be accessible as a top-level attribute."""
+    import forexfactory
+
+    assert hasattr(forexfactory, "read"), "forexfactory.read must be importable"
+    assert callable(forexfactory.read), "forexfactory.read must be callable"
+
+
+def test_read_parameters_are_annotated():
+    """read() must have complete parameter annotations matching get() (D-08)."""
+    import forexfactory
+
+    sig = inspect.signature(forexfactory.read)
+    params = sig.parameters
+
+    # Mirror get() keyword-only parameter list (D-08)
+    for name in ("currencies", "impacts", "start", "end", "include_no_data", "cache_dir", "auto_fetch"):
+        assert name in params, f"read() missing parameter '{name}' (must mirror get())"
+
+    # All params must be annotated
+    for name, param in params.items():
+        assert param.annotation != inspect.Parameter.empty, (
+            f"read() parameter '{name}' has no annotation"
+        )
+
+    # Return type must be pd.DataFrame
+    import pandas as pd
+
+    assert sig.return_annotation is pd.DataFrame, (
+        f"read() return annotation should be pd.DataFrame, got {sig.return_annotation}"
     )
 
 

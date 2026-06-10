@@ -1081,5 +1081,187 @@ class QuerySiteIdTests(unittest.TestCase):
         self.assertEqual(_cache.SCHEMA_VERSION, "3", "SCHEMA_VERSION must be '3' (D-14)")
 
 
+# ---------------------------------------------------------------------------
+# API-01 / D-08..D-11: forexfactory.read() round-trip tests
+# ---------------------------------------------------------------------------
+
+
+class ReadRoundTripTests(unittest.TestCase):
+    """API-01 / D-08..D-11: read() returns a sorted DatetimeIndex DataFrame.
+
+    Covers:
+    - result is a pandas.DataFrame (not a Path)
+    - result.index is a DatetimeIndex named 'datetime_utc'
+    - result.index.is_monotonic_increasing (sorted ascending)
+    - 'datetime_utc' is retained as a column (D-10)
+    - 'siteId' is always present (D-15 / plan 05-01 reindex)
+    - 'surprise' is NOT in the result (plain schema, D-09)
+    - Empty cache returns an empty DataFrame with correct index type (T-05-06)
+    """
+
+    def _setup_cache(
+        self,
+        cache_dir: Path,
+        months: list,
+        rows_per_month: list,
+        scope: dict | None = None,
+    ) -> None:
+        """Write per-month parquets + manifest under cache_dir."""
+        from forexfactory import _cache
+
+        _cache.ensure_dirs(cache_dir)
+        if scope is None:
+            scope = {"currencies": ["USD"], "impacts": ["high", "holiday"]}
+        manifest: dict = {"scope": scope, "months": {}}
+        for (year, month), rows in zip(months, rows_per_month, strict=False):
+            anchor = __import__("datetime").date(year, month, 1)
+            p = _cache.month_parquet_path(cache_dir, anchor)
+            _make_parquet(p, rows)
+            manifest["months"][f"{year:04d}-{month:02d}"] = {
+                "scraped_at": "2026-06-08T00:00:00Z",
+                "settled": True,
+            }
+        _cache.write_manifest(cache_dir, manifest)
+
+    def test_read_returns_dataframe_not_path(self):
+        """forexfactory.read() returns a DataFrame, not a Path (API-01)."""
+        import forexfactory
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            self._setup_cache(cache_dir, [(2026, 3)], [[_usd_high_data_row()]])
+
+            result = forexfactory.read(
+                currencies=["USD"],
+                impacts=["high"],
+                cache_dir=cache_dir,
+            )
+
+            self.assertIsInstance(result, pd.DataFrame)
+
+    def test_read_index_is_datetimeindex_named_datetime_utc(self):
+        """result.index is a DatetimeIndex named 'datetime_utc' (D-10)."""
+        import forexfactory
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            self._setup_cache(cache_dir, [(2026, 3)], [[_usd_high_data_row()]])
+
+            result = forexfactory.read(
+                currencies=["USD"],
+                impacts=["high"],
+                cache_dir=cache_dir,
+            )
+
+            self.assertIsInstance(result.index, pd.DatetimeIndex)
+            self.assertEqual(result.index.name, "datetime_utc")
+
+    def test_read_index_is_monotonic_increasing(self):
+        """result.index is sorted ascending even when months are out of date order (D-10)."""
+        import forexfactory
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            # Write two months: March first, then January — ensuring out-of-order input
+            row_jan = _usd_high_data_row("2026-01-15 08:30:00")
+            row_mar = _usd_high_data_row("2026-03-15 08:30:00")
+            self._setup_cache(
+                cache_dir,
+                [(2026, 3), (2026, 1)],
+                [[row_mar], [row_jan]],
+            )
+
+            result = forexfactory.read(
+                currencies=["USD"],
+                impacts=["high"],
+                cache_dir=cache_dir,
+            )
+
+            self.assertTrue(
+                result.index.is_monotonic_increasing,
+                "read() result index must be sorted ascending",
+            )
+
+    def test_read_datetime_utc_retained_as_column(self):
+        """'datetime_utc' is present as a column AND as the index name (D-10)."""
+        import forexfactory
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            self._setup_cache(cache_dir, [(2026, 3)], [[_usd_high_data_row()]])
+
+            result = forexfactory.read(
+                currencies=["USD"],
+                impacts=["high"],
+                cache_dir=cache_dir,
+            )
+
+            self.assertIn(
+                "datetime_utc",
+                result.columns,
+                "'datetime_utc' must be retained as a column (D-10)",
+            )
+
+    def test_read_siteid_always_present(self):
+        """'siteId' column is always in the result (null for pre-bump parquets — D-15)."""
+        import forexfactory
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            # _usd_high_data_row() does NOT include siteId — simulates pre-bump parquet
+            self._setup_cache(cache_dir, [(2026, 3)], [[_usd_high_data_row()]])
+
+            result = forexfactory.read(
+                currencies=["USD"],
+                impacts=["high"],
+                cache_dir=cache_dir,
+            )
+
+            self.assertIn("siteId", result.columns, "siteId must always be present (D-15)")
+
+    def test_read_does_not_add_surprise_column(self):
+        """read() returns the plain schema DataFrame — no 'surprise' column (D-09)."""
+        import forexfactory
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            self._setup_cache(cache_dir, [(2026, 3)], [[_usd_high_data_row()]])
+
+            result = forexfactory.read(
+                currencies=["USD"],
+                impacts=["high"],
+                cache_dir=cache_dir,
+            )
+
+            self.assertNotIn(
+                "surprise",
+                result.columns,
+                "read() must not add 'surprise' column (D-09)",
+            )
+
+    def test_read_empty_cache_does_not_raise(self):
+        """read() on an empty result set returns an empty DataFrame without raising (T-05-06)."""
+        import forexfactory
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            # Write a parquet with EUR rows but request USD — filter produces empty result
+            eur_row = _eur_medium_row()
+            self._setup_cache(
+                cache_dir,
+                [(2026, 3)],
+                [[eur_row]],
+                scope={"currencies": ["USD", "EUR"], "impacts": ["high", "medium", "holiday"]},
+            )
+
+            result = forexfactory.read(
+                currencies=["USD"],
+                impacts=["high"],
+                cache_dir=cache_dir,
+            )
+
+            self.assertIsInstance(result, pd.DataFrame)
+
+
 if __name__ == "__main__":
     unittest.main()
