@@ -136,7 +136,9 @@ def test_read_parameters_are_annotated():
     params = sig.parameters
 
     # Mirror get() keyword-only parameter list (D-08)
-    for name in ("currencies", "impacts", "start", "end", "include_no_data", "cache_dir", "auto_fetch"):
+    for name in (
+        "currencies", "impacts", "start", "end", "include_no_data", "cache_dir", "auto_fetch"
+    ):
         assert name in params, f"read() missing parameter '{name}' (must mirror get())"
 
     # All params must be annotated

@@ -16,6 +16,8 @@ Usage:
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
+import pandas as pd
+
 from forexfactory._analytics import surprise, surprise_z
 
 try:
@@ -23,7 +25,7 @@ try:
 except PackageNotFoundError:  # pragma: no cover - exercised in non-installed environments
     __version__ = "0.0.0"
 
-__all__ = ["get", "populate", "surprise", "surprise_z", "__version__"]
+__all__ = ["get", "read", "populate", "surprise", "surprise_z", "__version__"]
 
 
 def get(
@@ -58,6 +60,46 @@ def get(
         auto_fetch=auto_fetch,
         # session and progress are not exposed at the library level (D-11 — library silent)
     )
+
+
+def read(
+    *,
+    currencies: list[str] | None = None,
+    impacts: list[str] | None = None,
+    start: str | None = None,
+    end: str | None = None,
+    include_no_data: bool = False,
+    cache_dir: Path | None = None,
+    auto_fetch: bool = True,
+) -> pd.DataFrame:
+    """Return a filtered DataFrame from the local cache with a sorted DatetimeIndex.
+
+    Mirrors `get()` exactly (D-08): same keyword-only signature, calls `get()` to
+    resolve the result parquet Path, then loads it via `pd.read_parquet`.
+
+    Post-load transform (D-10): sets a DatetimeIndex named 'datetime_utc' while
+    retaining 'datetime_utc' as a column, then sorts ascending.  No dtype coercion
+    (D-11).  No surprise columns added (D-09) — use `forexfactory.surprise(df)`
+    and `forexfactory.surprise_z(df)` for that.
+
+    The result always carries a `siteId` column (null for pre-bump months — D-15).
+    """
+    path = get(
+        currencies=currencies,
+        impacts=impacts,
+        start=start,
+        end=end,
+        include_no_data=include_no_data,
+        cache_dir=cache_dir,
+        auto_fetch=auto_fetch,
+    )
+    df = pd.read_parquet(path)
+    # Set a DatetimeIndex named 'datetime_utc', retaining it as a column too (D-10).
+    # drop=False keeps the column; set_index copies the Series as the index.
+    df = df.set_index(df["datetime_utc"], drop=False)
+    df.index.name = "datetime_utc"
+    # Sort ascending by the DatetimeIndex (D-10); handles unordered per-month concat.
+    return df.sort_index()
 
 
 def populate(
