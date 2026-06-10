@@ -233,6 +233,13 @@ def run_query(
     else:
         df = pd.DataFrame(columns=_pipeline.PHASE2_COLUMNS)
 
+    # D-15 / DATA-06: ensure siteId is always present in the result (mirrors hasDataValues guard).
+    # Stale pre-bump parquets lack the siteId column; add it as all-null so consumers never
+    # branch on column existence (nullable object — not coerced to Int64).
+    if "siteId" not in df.columns:
+        df = df.copy()
+        df["siteId"] = None
+
     # D-08: default filter hides no-data events (speeches) but keeps holidays.
     # Guard handles pre-Phase-2 parquets that lack the hasDataValues column (RESEARCH Pitfall 4).
     if not include_no_data:

@@ -27,12 +27,13 @@ IN_DIR = "out"  # where days_YYYY_MM.json live
 PARSED_CSV = "ff_usd_high_holiday.csv"  # output from parse step
 CLEAN_CSV = "ff_usd_high_holiday_clean.csv"  # output from sanitize step
 OUT_PARQUET = "economic_events.parquet"  # final parquet output
-KEEP_CURRENCIES = {"USD"}  # only USD
-KEEP_IMPACTS = {"high", "holiday"}  # red folder + bank holidays
+KEEP_CURRENCIES = {"USD", "EUR", "GBP", "JPY"}  # Core-4 currencies (CACHE-07 / D-04)
+KEEP_IMPACTS = {"high", "medium", "holiday"}  # high + medium + bank holidays (CACHE-07 / D-05)
 PARQUET_COMPRESSION: Literal["zstd"] = "zstd"
 PARQUET_COMPRESSION_LEVEL = 3
 # Phase-2 full analytical schema — final parquet column order (D-01, DATA-02/03/04).
 # Imported by _populate.py and _query.py to prevent stale-column-list drift (RESEARCH Pitfall 3).
+# Phase-5: siteId added (DATA-06 / D-13) — nullable, None for pre-bump months.
 PHASE2_COLUMNS: list[str] = [
     "datetime_utc",
     "currency",
@@ -52,6 +53,7 @@ PHASE2_COLUMNS: list[str] = [
     "revisionBetterWorse",
     "ebaseId",
     "country",
+    "siteId",
     "hasDataValues",
 ]
 # ==========================
@@ -147,10 +149,11 @@ def flatten_events(
 ) -> Generator[dict[str, Any], None, None]:
     """Flatten nested days/events structure into individual event dicts.
 
-    Phase 2: yields 20 source keys — the 19 PHASE2_COLUMNS fields (with date +
+    Phase 2: yields source keys for all PHASE2_COLUMNS fields (with date +
     time_utc standing in for the derived datetime_utc) plus the analytical schema:
     raw value strings, parsed numerics, surprise flags, identity, and hasDataValues.
-    FF UI/internal fields (checker, releaser, siteId, show*/enable*, soloTitle,
+    Phase 5: siteId is now captured (DATA-06 / D-12); nullable — None when absent.
+    FF UI/internal fields (checker, releaser, show*/enable*, soloTitle,
     notice, etc.) are silently dropped (DATA-04).
     """
     for d in days:
@@ -192,6 +195,9 @@ def flatten_events(
                 "revisionBetterWorse": ev.get("revisionBetterWorse"),
                 "ebaseId": ev.get("ebaseId"),
                 "country": ev.get("country") or "",
+                # siteId: captured for v2 SRC-GRAPH-01 graph API (DATA-06 / D-12).
+                # None when absent — nullable object, not coerced to Int64.
+                "siteId": ev.get("siteId"),
                 "hasDataValues": ev.get("hasDataValues", False),
             }
 

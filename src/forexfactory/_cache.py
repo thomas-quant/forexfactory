@@ -25,7 +25,7 @@ from typing import Any
 # ====== CONFIG ======
 DEFAULT_CACHE_DIR: Path = Path.home() / ".cache" / "forexfactory"
 CACHE_DIR_ENV: str = "FOREXFACTORY_CACHE_DIR"
-SCHEMA_VERSION: str = "2"  # Phase-2 wide analytical schema
+SCHEMA_VERSION: str = "3"  # Phase-5: siteId added (DATA-06); existing cache untouched (nullable)
 # ====================
 
 logger = logging.getLogger(__name__)
