@@ -18,6 +18,7 @@ import os
 import tempfile
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 # ====== CONFIG ======
 DEFAULT_CACHE_DIR: Path = Path.home() / ".cache" / "forexfactory"
@@ -90,7 +91,7 @@ def ensure_dirs(cache_dir: Path) -> None:
 # Manifest read / write (D-02)
 # ---------------------------------------------------------------------------
 
-def read_manifest(cache_dir: Path) -> dict:
+def read_manifest(cache_dir: Path) -> dict[str, Any]:
     """Load manifest.json; return {} if missing or invalid JSON (warn-and-skip pattern)."""
     path = manifest_path(cache_dir)
     try:
@@ -103,7 +104,7 @@ def read_manifest(cache_dir: Path) -> dict:
         return {}
 
 
-def write_manifest(cache_dir: Path, manifest: dict) -> None:
+def write_manifest(cache_dir: Path, manifest: dict[str, Any]) -> None:
     """Write manifest.json atomically using os.replace."""
     ensure_dirs(cache_dir)
     path = manifest_path(cache_dir)
@@ -134,7 +135,7 @@ def update_manifest_month(
     settled: bool,
     currencies: list,
     impacts: list,
-) -> dict:
+) -> dict[str, Any]:
     """Read manifest, record scope + per-month provenance, write back, return manifest.
 
     Union-merges currencies/impacts into the existing scope (sorted set union) so
