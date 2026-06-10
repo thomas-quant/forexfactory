@@ -95,8 +95,10 @@ def read(
     )
     df = pd.read_parquet(path)
     # Set a DatetimeIndex named 'datetime_utc', retaining it as a column too (D-10).
-    # drop=False keeps the column; set_index copies the Series as the index.
-    df = df.set_index(df["datetime_utc"], drop=False)
+    # pd.to_datetime(..., utc=True) coerces object-dtype columns (empty PHASE2_COLUMNS path)
+    # to a proper DatetimeIndex regardless of row count (T-05-10 / WR-01).
+    # drop=False keeps the column; set_index copies the coerced Series as the index.
+    df = df.set_index(pd.to_datetime(df["datetime_utc"], utc=True), drop=False)
     df.index.name = "datetime_utc"
     # Sort ascending by the DatetimeIndex (D-10); handles unordered per-month concat.
     return df.sort_index()

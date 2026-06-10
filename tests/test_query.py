@@ -1292,7 +1292,8 @@ class ReadRoundTripTests(unittest.TestCase):
             self.assertIsInstance(
                 result.index,
                 pd.DatetimeIndex,
-                "read() empty result must have a DatetimeIndex, not a plain object Index (T-05-11 / WR-01)",
+                # WR-01 / T-05-11: empty result must have DatetimeIndex, not plain object Index
+                "read() empty result must have a DatetimeIndex (T-05-11 / WR-01)",
             )
             self.assertEqual(
                 result.index.name,
