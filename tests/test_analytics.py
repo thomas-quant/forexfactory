@@ -316,6 +316,7 @@ class SurpriseZEdgeCaseTests(unittest.TestCase):
 
         result = surprise_z(df)
         self.assertEqual(len(result), 2)
+        self.assertTrue(result.isna().all())
 
 
 class SurpriseZRowAlignmentTests(unittest.TestCase):

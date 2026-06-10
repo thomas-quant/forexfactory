@@ -77,8 +77,10 @@ def read(
     Mirrors `get()` exactly (D-08): same keyword-only signature, calls `get()` to
     resolve the result parquet Path, then loads it via `pd.read_parquet`.
 
-    Post-load transform (D-10): sets a DatetimeIndex named 'datetime_utc' while
-    retaining 'datetime_utc' as a column, then sorts ascending.  No dtype coercion
+    Post-load transform (D-10): sets a DatetimeIndex named 'datetime_utc' — coercing
+    that column to a UTC DatetimeIndex so the invariant holds even for a zero-row
+    result — while retaining 'datetime_utc' as a column, then sorts ascending.  Apart
+    from the index coercion, columns are returned as stored — no other dtype coercion
     (D-11).  No surprise columns added (D-09) — use `forexfactory.surprise(df)`
     and `forexfactory.surprise_z(df)` for that.
 

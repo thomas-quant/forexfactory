@@ -50,7 +50,7 @@ def surprise_z(df: pd.DataFrame) -> pd.Series:
         return pd.Series(float("nan"), index=df.index)
 
     if df.empty:
-        return pd.Series(dtype=float)
+        return pd.Series(dtype=float, index=df.index)
 
     s = surprise(df)
 
