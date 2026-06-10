@@ -37,10 +37,14 @@ def test_version_is_1_1_0():
 
 
 def test_all_lists_exact_public_surface():
-    """__all__ must be exactly ['get', 'populate', '__version__']."""
+    """__all__ must be exactly ['get', 'populate', 'surprise', 'surprise_z', '__version__'].
+
+    Plan 02 (05-02) adds surprise and surprise_z (API-02, API-03 / D-09).
+    Plan 03 will add 'read' (API-01); update this test then.
+    """
     import forexfactory
 
-    assert forexfactory.__all__ == ["get", "populate", "__version__"], (
+    assert forexfactory.__all__ == ["get", "populate", "surprise", "surprise_z", "__version__"], (
         f"__all__ mismatch: {forexfactory.__all__}"
     )
 

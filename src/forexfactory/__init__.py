@@ -16,12 +16,14 @@ Usage:
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
+from forexfactory._analytics import surprise, surprise_z
+
 try:
     __version__: str = version("forexfactory")
 except PackageNotFoundError:  # pragma: no cover - exercised in non-installed environments
     __version__ = "0.0.0"
 
-__all__ = ["get", "populate", "__version__"]
+__all__ = ["get", "populate", "surprise", "surprise_z", "__version__"]
 
 
 def get(
