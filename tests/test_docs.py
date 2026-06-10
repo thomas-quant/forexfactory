@@ -61,3 +61,6 @@ def test_readme_schema_documents_current_parquet_columns():
     assert "| `ebaseId` |" in text
     assert "| `country` |" in text
     assert "| `hasDataValues` |" in text
+
+    # Phase-3 siteId (DATA-06 / schema_version 3)
+    assert "| `siteId` |" in text

@@ -89,6 +89,8 @@ forexfactory --version
 
 ## Library API
 
+### `forexfactory.get(...)` — Path to filtered parquet
+
 ```python
 import forexfactory
 from pathlib import Path
@@ -103,8 +105,8 @@ df = pd.read_parquet(path)
 
 ```python
 path = forexfactory.get(
-    currencies=["USD"],          # list of currency codes (default: ["USD"])
-    impacts=["high"],            # list of impact levels (default: ["high", "holiday"])
+    currencies=["USD"],          # list of currency codes (default: ["USD", "EUR", "GBP", "JPY"])
+    impacts=["high"],            # list of impact levels (default: ["high", "medium", "holiday"])
     start="2024-01",             # first month to include (YYYY-MM, optional)
     end="2024-12",               # last month to include (YYYY-MM, optional)
     include_no_data=False,       # include speeches and no-data events (default: False)
@@ -113,9 +115,41 @@ path = forexfactory.get(
 )
 ```
 
+### `forexfactory.read(...)` — DataFrame convenience loader
+
+`forexfactory.read(...)` complements `get()` — it accepts the same keyword-only parameters but returns a `pandas.DataFrame` instead of a `Path`, so you never need to handle a file path yourself:
+
+```python
+import forexfactory
+
+df = forexfactory.read(currencies=["USD"], impacts=["high"])
+# df is a pandas.DataFrame with a datetime_utc DatetimeIndex and datetime_utc column
+```
+
+The returned DataFrame has:
+- A `DatetimeIndex` named `datetime_utc`, sorted ascending
+- `datetime_utc` retained as a column (for groupby/merge ergonomics)
+- All schema columns as stored — no automatic type coercion
+- A `siteId` column always present (null for pre-v1.1 cached months)
+
+### `forexfactory.surprise(df)` and `forexfactory.surprise_z(df)` — opt-in surprise metrics
+
+Surprise helpers operate on the DataFrame returned by `read()` and return row-aligned `pd.Series`. They are opt-in — `read()` returns the plain schema; you compose surprise yourself:
+
+```python
+import forexfactory
+
+df = forexfactory.read(currencies=["USD"], impacts=["high"])
+df["surprise"] = forexfactory.surprise(df)    # raw actual − forecast (D-01)
+df["surprise_z"] = forexfactory.surprise_z(df)  # z-scored over each ebaseId's full history (D-02)
+```
+
+- `surprise(df)`: `actual − forecast`, verbatim. NaN when either is NaN. Sign is numeric — no polarity adjustment.
+- `surprise_z(df)`: z-scored over each `ebaseId`'s full history in `df`. NaN for groups with fewer than 2 releases or zero standard deviation.
+
 ## Output Schema
 
-The cache stores data as parquet with the following columns (schema_version 2):
+The cache stores data as parquet with the following columns (schema_version 3):
 
 **Core fields (DATA-01)**
 
@@ -157,6 +191,7 @@ Magnitude suffixes expanded (K=×1e3, M=×1e6, B=×1e9, T=×1e12). Percent divid
 | `ebaseId` | Int64 | FF metric series identifier (nullable) |
 | `country` | string | Country code (e.g. US, UK, JN, EZ) |
 | `hasDataValues` | boolean | True for data releases with forecast/actual/previous; False for speeches and holidays |
+| `siteId` | object | FF site identifier (nullable — populated for new scrapes, null for pre-v1.1 cached months; prerequisite for the v2 graph API) |
 
 ## Cache Layout
 
