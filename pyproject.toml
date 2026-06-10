@@ -36,6 +36,14 @@ dependencies = [
     "pyarrow>=14.0.0",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "pytest>=8",
+    "pandas-stubs>=3.0",
+]
+
 [project.urls]
 Homepage = "https://github.com/thomas-quant/forexfactory"
 Repository = "https://github.com/thomas-quant/forexfactory"
