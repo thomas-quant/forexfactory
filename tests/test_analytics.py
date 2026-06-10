@@ -396,5 +396,131 @@ class SurpriseZNullableEbaseIdTests(unittest.TestCase):
         self.assertEqual(len(result), 2)
 
 
+# ---------------------------------------------------------------------------
+# Missing-column guard tests — Gap 1 regression (05-04)
+# ---------------------------------------------------------------------------
+
+
+class SurpriseMissingColumnTests(unittest.TestCase):
+    """surprise() must return all-NaN row-aligned Series when required columns are absent (D-03)."""
+
+    def test_missing_actual_returns_all_nan(self):
+        """Frame with 'forecast' but no 'actual' -> all-NaN, no raise."""
+        df = pd.DataFrame({"forecast": [4.3]})
+        from forexfactory._analytics import surprise
+
+        result = surprise(df)
+        self.assertIsInstance(result, pd.Series)
+        self.assertEqual(len(result), len(df))
+        self.assertTrue(result.index.equals(df.index))
+        self.assertTrue(result.isna().all())
+
+    def test_missing_forecast_returns_all_nan(self):
+        """Frame with 'actual' but no 'forecast' -> all-NaN, no raise."""
+        df = pd.DataFrame({"actual": [4.5]})
+        from forexfactory._analytics import surprise
+
+        result = surprise(df)
+        self.assertIsInstance(result, pd.Series)
+        self.assertEqual(len(result), len(df))
+        self.assertTrue(result.index.equals(df.index))
+        self.assertTrue(result.isna().all())
+
+    def test_missing_both_columns_returns_all_nan(self):
+        """Frame with neither 'actual' nor 'forecast' -> all-NaN, no raise."""
+        df = pd.DataFrame({"foo": [1, 2]})
+        from forexfactory._analytics import surprise
+
+        result = surprise(df)
+        self.assertIsInstance(result, pd.Series)
+        self.assertEqual(len(result), len(df))
+        self.assertTrue(result.index.equals(df.index))
+        self.assertTrue(result.isna().all())
+
+    def test_empty_no_column_dataframe_returns_empty_nan_series(self):
+        """pd.DataFrame() (zero rows, zero columns) -> empty all-NaN Series, no raise."""
+        df = pd.DataFrame()
+        from forexfactory._analytics import surprise
+
+        result = surprise(df)
+        self.assertIsInstance(result, pd.Series)
+        self.assertEqual(len(result), 0)
+        self.assertTrue(result.index.equals(df.index))
+
+    def test_custom_index_preserved_missing_columns(self):
+        """Custom index is preserved even when columns are absent."""
+        df = pd.DataFrame({"bar": [10, 20, 30]}, index=pd.Index([5, 10, 15]))
+        from forexfactory._analytics import surprise
+
+        result = surprise(df)
+        self.assertTrue(result.index.equals(df.index))
+        self.assertTrue(result.isna().all())
+
+
+class SurpriseZMissingColumnTests(unittest.TestCase):
+    """surprise_z() must return all-NaN row-aligned Series when required columns are absent (D-03)."""
+
+    def test_missing_ebaseid_returns_all_nan(self):
+        """Frame with actual+forecast but no 'ebaseId' -> all-NaN, no raise."""
+        df = pd.DataFrame({"actual": [4.5], "forecast": [4.3]})
+        from forexfactory._analytics import surprise_z
+
+        result = surprise_z(df)
+        self.assertIsInstance(result, pd.Series)
+        self.assertEqual(len(result), len(df))
+        self.assertTrue(result.index.equals(df.index))
+        self.assertTrue(result.isna().all())
+
+    def test_has_ebaseid_but_missing_actual_returns_all_nan(self):
+        """Frame with ebaseId but no 'actual' -> all-NaN, no raise (transitive guard)."""
+        df = pd.DataFrame({"forecast": [4.3], "ebaseId": [100]})
+        from forexfactory._analytics import surprise_z
+
+        result = surprise_z(df)
+        self.assertIsInstance(result, pd.Series)
+        self.assertEqual(len(result), len(df))
+        self.assertTrue(result.index.equals(df.index))
+        self.assertTrue(result.isna().all())
+
+    def test_has_ebaseid_but_missing_forecast_returns_all_nan(self):
+        """Frame with ebaseId but no 'forecast' -> all-NaN, no raise (transitive guard)."""
+        df = pd.DataFrame({"actual": [4.5], "ebaseId": [100]})
+        from forexfactory._analytics import surprise_z
+
+        result = surprise_z(df)
+        self.assertIsInstance(result, pd.Series)
+        self.assertEqual(len(result), len(df))
+        self.assertTrue(result.index.equals(df.index))
+        self.assertTrue(result.isna().all())
+
+    def test_empty_no_column_dataframe_returns_empty_series(self):
+        """pd.DataFrame() (zero rows, zero columns) -> empty Series, no raise."""
+        df = pd.DataFrame()
+        from forexfactory._analytics import surprise_z
+
+        result = surprise_z(df)
+        self.assertIsInstance(result, pd.Series)
+        self.assertEqual(len(result), 0)
+
+    def test_missing_ebaseid_multi_row_row_aligned(self):
+        """Multi-row frame missing ebaseId -> all-NaN, index preserved."""
+        df = pd.DataFrame({"actual": [4.5, 5.0, 3.2], "forecast": [4.3, 4.8, 3.0]})
+        from forexfactory._analytics import surprise_z
+
+        result = surprise_z(df)
+        self.assertEqual(len(result), len(df))
+        self.assertTrue(result.index.equals(df.index))
+        self.assertTrue(result.isna().all())
+
+    def test_no_column_frame_with_custom_index(self):
+        """Custom-indexed frame with no columns -> all-NaN, index preserved."""
+        df = pd.DataFrame(index=pd.Index([7, 8, 9]))
+        from forexfactory._analytics import surprise_z
+
+        result = surprise_z(df)
+        self.assertEqual(len(result), len(df))
+        self.assertTrue(result.index.equals(df.index))
+
+
 if __name__ == "__main__":
     unittest.main()
