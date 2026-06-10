@@ -1240,12 +1240,20 @@ class ReadRoundTripTests(unittest.TestCase):
             )
 
     def test_read_empty_cache_does_not_raise(self):
-        """read() on an empty result set returns an empty DataFrame without raising (T-05-06)."""
-        import forexfactory
+        """read() on an empty result set returns an empty DataFrame without raising (T-05-06).
 
+        Covers two empty-result paths:
+        - Path A: month parquets exist with EUR rows; USD filter yields zero rows (tz-aware col)
+        - Path B: scope covers USD but no months in manifest; run_query produces an empty
+          PHASE2_COLUMNS DataFrame with object-dtype datetime_utc — THIS is WR-01's broken path
+          where set_index previously returned a plain object Index, not a DatetimeIndex.
+        """
+        import forexfactory
+        from forexfactory import _cache
+
+        # --- Path A: filter produces empty rows from existing parquet ---
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = Path(tmpdir) / "cache"
-            # Write a parquet with EUR rows but request USD — filter produces empty result
             eur_row = _eur_medium_row()
             self._setup_cache(
                 cache_dir,
@@ -1261,6 +1269,36 @@ class ReadRoundTripTests(unittest.TestCase):
             )
 
             self.assertIsInstance(result, pd.DataFrame)
+
+        # --- Path B: no months in manifest -> object-dtype PHASE2_COLUMNS DataFrame (WR-01) ---
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            _cache.ensure_dirs(cache_dir)
+            # Scope covers USD but manifest has zero months -> run_query dfs=[] path
+            manifest: dict = {
+                "scope": {"currencies": ["USD"], "impacts": ["high", "holiday"]},
+                "months": {},
+            }
+            _cache.write_manifest(cache_dir, manifest)
+
+            result = forexfactory.read(
+                currencies=["USD"],
+                impacts=["high"],
+                cache_dir=cache_dir,
+                auto_fetch=False,
+            )
+
+            self.assertIsInstance(result, pd.DataFrame)
+            self.assertIsInstance(
+                result.index,
+                pd.DatetimeIndex,
+                "read() empty result must have a DatetimeIndex, not a plain object Index (T-05-11 / WR-01)",
+            )
+            self.assertEqual(
+                result.index.name,
+                "datetime_utc",
+                "read() empty result index must be named 'datetime_utc' (D-10)",
+            )
 
 
 if __name__ == "__main__":
