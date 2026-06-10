@@ -806,3 +806,173 @@ class CliScopeMissBannerTests(unittest.TestCase):
                 ln for ln in buf_out.getvalue().splitlines() if ln.strip()
                 and "not in cache" not in ln  # banner may appear before the error
             ]), 0, "no parquet path line must appear on stdout when auto-widen fails")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CLI-01 / D-06: --version top-level action (plan 04-03)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class CliVersionTests(unittest.TestCase):
+    """CLI-01 / D-06: --version prints the installed version from the single source of truth."""
+
+    def test_version_flag_exits_zero_and_prints_version(self):
+        """--version prints 'forexfactory <version>' and exits 0."""
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            with self.assertRaises(SystemExit) as cm:
+                cli.main(["--version"])
+        # argparse version action exits 0
+        self.assertEqual(cm.exception.code, 0)
+        output = buf.getvalue().strip()
+        self.assertTrue(
+            output.startswith("forexfactory "),
+            f"Expected 'forexfactory <version>', got: {output!r}",
+        )
+
+    def test_version_matches_package_version(self):
+        """--version output matches forexfactory.__version__ (single source of truth, D-08)."""
+        import forexfactory
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            with self.assertRaises(SystemExit):
+                cli.main(["--version"])
+        output = buf.getvalue().strip()
+        self.assertIn(forexfactory.__version__, output)
+
+    def test_version_not_hardcoded_in_cli_source(self):
+        """Version literal '1.1.0' must NOT appear as a hardcoded string in cli.py (D-06/D-08)."""
+        import inspect
+        source = inspect.getsource(cli)
+        # The version string should come from __version__ import, not a hardcoded literal
+        self.assertNotIn('"1.1.0"', source)
+        self.assertNotIn("'1.1.0'", source)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CLI-02 / D-05: status subcommand registration + dispatch (plan 04-03)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class CliStatusRegistrationTests(unittest.TestCase):
+    """CLI-02: status subcommand is registered with --cache-dir and --json options."""
+
+    def test_status_help_lists_json_flag(self):
+        """forexfactory status --help lists --json option."""
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            with self.assertRaises(SystemExit) as cm:
+                cli.main(["status", "--help"])
+        self.assertEqual(cm.exception.code, 0)
+        self.assertIn("--json", buf.getvalue())
+
+    def test_status_help_lists_cache_dir_flag(self):
+        """forexfactory status --help lists --cache-dir option."""
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            with self.assertRaises(SystemExit) as cm:
+                cli.main(["status", "--help"])
+        self.assertEqual(cm.exception.code, 0)
+        self.assertIn("--cache-dir", buf.getvalue())
+
+    def test_status_no_start_end_does_not_raise_attribute_error(self):
+        """status subcommand has no --start/--end args; must not raise AttributeError."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Empty cache dir — will print 'cache is empty' guidance
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                exit_code = cli.main(["status", "--cache-dir", tmpdir])
+        self.assertEqual(exit_code, 0)
+
+
+class CliStatusDispatchTests(unittest.TestCase):
+    """CLI-02 / D-05: status dispatch reads manifest and prints aligned text or JSON."""
+
+    def _build_manifest(self) -> dict:
+        return {
+            "schema_version": "2",
+            "scope": {
+                "currencies": ["USD"],
+                "impacts": ["high", "holiday"],
+            },
+            "months": {
+                "2010-01": {"scraped_at": "2024-01-01T00:00:00Z", "settled": True},
+                "2010-02": {"scraped_at": "2024-01-01T00:00:00Z", "settled": True},
+                "2026-03": {"scraped_at": "2026-03-01T00:00:00Z", "settled": False},
+            },
+        }
+
+    def test_status_text_mode_contains_required_fields(self):
+        """status text output contains cache dir, schema ver, scope, date range, settled count."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            from forexfactory import _cache
+            manifest = self._build_manifest()
+            _cache.write_manifest(pathlib.Path(tmpdir), manifest)
+
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                exit_code = cli.main(["status", "--cache-dir", tmpdir])
+
+        self.assertEqual(exit_code, 0)
+        output = buf.getvalue()
+        # Must contain the cache directory path
+        self.assertIn(tmpdir, output)
+        # Must contain schema version
+        self.assertIn("2", output)
+        # Must contain currency
+        self.assertIn("USD", output)
+        # Must contain date range start and end
+        self.assertIn("2010-01", output)
+        self.assertIn("2026-03", output)
+        # Must contain settled count (2 of 3 months are settled)
+        self.assertIn("2", output)
+
+    def test_status_json_mode_returns_valid_json(self):
+        """status --json emits valid JSON with required keys."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            from forexfactory import _cache
+            manifest = self._build_manifest()
+            _cache.write_manifest(pathlib.Path(tmpdir), manifest)
+
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                exit_code = cli.main(["status", "--json", "--cache-dir", tmpdir])
+
+        self.assertEqual(exit_code, 0)
+        output = buf.getvalue().strip()
+        data = json.loads(output)  # must be valid JSON
+
+        # Required top-level keys
+        self.assertIn("cache_dir", data)
+        self.assertIn("schema_version", data)
+        self.assertIn("scope", data)
+        self.assertIn("date_range", data)
+        self.assertIn("settled", data)
+        self.assertIn("unsettled", data)
+
+        # scope sub-keys
+        self.assertIn("currencies", data["scope"])
+        self.assertIn("impacts", data["scope"])
+
+        # date_range sub-keys
+        self.assertIn("start", data["date_range"])
+        self.assertIn("end", data["date_range"])
+        self.assertIn("count", data["date_range"])
+
+        # Values must be correct
+        self.assertEqual(data["scope"]["currencies"], ["USD"])
+        self.assertEqual(data["date_range"]["start"], "2010-01")
+        self.assertEqual(data["date_range"]["end"], "2026-03")
+        self.assertEqual(data["date_range"]["count"], 3)
+        self.assertEqual(data["settled"], 2)
+        self.assertEqual(data["unsettled"], 1)
+
+    def test_status_empty_cache_exits_zero_with_guidance(self):
+        """status on empty cache exits 0 and prints 'cache is empty' guidance."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                exit_code = cli.main(["status", "--cache-dir", tmpdir])
+
+        self.assertEqual(exit_code, 0)
+        output = buf.getvalue().lower()
+        self.assertIn("cache is empty", output)
+        self.assertIn("populate", output)
