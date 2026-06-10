@@ -29,8 +29,8 @@ from forexfactory import _cache, _pipeline
 
 # ====== CONFIG ======
 RAW_INPUT_DIR: str = "out"  # legacy on-disk asset location (D-05 / SC2)
-DEFAULT_CURRENCIES: list[str] = ["USD"]  # D-04
-DEFAULT_IMPACTS: list[str] = ["high", "holiday"]  # D-04
+DEFAULT_CURRENCIES: list[str] = ["USD", "EUR", "GBP", "JPY"]  # Core-4 (CACHE-07 / D-04)
+DEFAULT_IMPACTS: list[str] = ["high", "medium", "holiday"]  # high/medium/holidays (D-05)
 # Nullable-int columns: cast after DataFrame construction to guarantee Int64 parquet
 # dtype even when some rows have None (T-02-02 / RESEARCH Pattern 4).
 INT_NULLABLE_COLS: list[str] = ["id", "ebaseId", "actualBetterWorse", "revisionBetterWorse"]

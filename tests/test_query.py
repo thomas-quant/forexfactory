@@ -1035,7 +1035,7 @@ class QuerySiteIdTests(unittest.TestCase):
         )
 
     def test_siteid_present_when_parquet_lacks_column(self):
-        """Result always has siteId column (all null) even if parquet was written before bump (D-15)."""
+        """Result always has siteId column (all null) for pre-bump parquets (D-15)."""
         from forexfactory import _query
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1049,8 +1049,12 @@ class QuerySiteIdTests(unittest.TestCase):
             )
 
             df = pd.read_parquet(result)
-            self.assertIn("siteId", df.columns, "siteId must always be in query result columns (D-15)")
-            self.assertTrue(df["siteId"].isna().all(), "siteId must be all-null for legacy parquets")
+            self.assertIn(
+                "siteId", df.columns, "siteId must always be in query result (D-15)"
+            )
+            self.assertTrue(
+                df["siteId"].isna().all(), "siteId must be all-null for legacy parquets"
+            )
 
     def test_siteid_values_preserved_when_parquet_has_column(self):
         """siteId values in the parquet are preserved in the query result (D-15)."""

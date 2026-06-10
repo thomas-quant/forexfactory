@@ -116,8 +116,8 @@ class PopulateHappyPathTests(unittest.TestCase):
             self.assertIn("scraped_at", entry)
             self.assertIn("settled", entry)
 
-    def test_manifest_scope_is_default_usd_high_holiday(self):
-        """Default scope in manifest is currencies=[USD], impacts=[high, holiday] (D-04)."""
+    def test_manifest_scope_is_default_core4_high_medium_holiday(self):
+        """Default scope: Core-4 currencies + high/medium/holiday (CACHE-07 / D-04/D-05)."""
         from forexfactory import _cache, _populate
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -133,11 +133,11 @@ class PopulateHappyPathTests(unittest.TestCase):
 
             manifest = _cache.read_manifest(cache_dir)
             scope = manifest.get("scope", {})
-            self.assertEqual(scope.get("currencies"), ["USD"])
-            self.assertCountEqual(scope.get("impacts", []), ["high", "holiday"])
+            self.assertCountEqual(scope.get("currencies"), ["USD", "EUR", "GBP", "JPY"])
+            self.assertCountEqual(scope.get("impacts", []), ["high", "medium", "holiday"])
 
-    def test_eur_event_filtered_out_by_default_scope(self):
-        """EUR events are filtered out when running with default scope (D-04)."""
+    def test_eur_event_included_in_default_scope(self):
+        """EUR events are included when running with default Core-4 scope (CACHE-07 / D-04)."""
         import pandas as pd
 
         from forexfactory import _populate
@@ -149,16 +149,15 @@ class PopulateHappyPathTests(unittest.TestCase):
             cache_dir = tmp_path / "cache"
             cache_dir.mkdir()
 
-            # Only EUR event — parquet should have 0 rows under default scope
+            # EUR/high event — parquet should include it under Core-4 default scope
             self._write_raw(raw_dir, 2026, 3, [self._eur_high_event()])
 
             _populate.run_populate(cache_dir=cache_dir, raw_dir=str(raw_dir))
 
-            # parquet exists but contains no rows
             parquet_path = cache_dir / "2026-03.parquet"
-            if parquet_path.exists():
-                df = pd.read_parquet(parquet_path)
-                self.assertEqual(len(df), 0)
+            self.assertTrue(parquet_path.exists(), "parquet must be written")
+            df = pd.read_parquet(parquet_path)
+            self.assertGreater(len(df), 0, "EUR/high must be included in Core-4 default scope")
 
     def test_processes_all_months_by_default(self):
         """With no start/end, all days_*.json months are processed (D-05)."""
@@ -719,7 +718,7 @@ class PopulatePhase2SchemaTests(unittest.TestCase):
             self.assertEqual(result3["skipped"], 0)
 
     def test_schema_version_in_manifest_after_populate(self):
-        """After run_populate, manifest has schema_version == '2' (Open Question 3 resolution)."""
+        """After run_populate, manifest has schema_version == '3' (Phase-5 siteId bump / D-14)."""
         from forexfactory import _cache, _populate
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -735,15 +734,15 @@ class PopulatePhase2SchemaTests(unittest.TestCase):
             manifest = _cache.read_manifest(cache_dir)
             self.assertEqual(
                 manifest.get("schema_version"),
-                "2",
-                "manifest must have schema_version == '2' after populate",
+                "3",
+                "manifest must have schema_version == '3' after Phase-5 siteId bump (D-14)",
             )
 
     def test_schema_version_constant_in_cache_module(self):
-        """_cache.SCHEMA_VERSION == '2'."""
+        """_cache.SCHEMA_VERSION == '3' (Phase-5 siteId addition / D-14)."""
         from forexfactory import _cache
 
-        self.assertEqual(_cache.SCHEMA_VERSION, "2")
+        self.assertEqual(_cache.SCHEMA_VERSION, "3")
 
     def test_force_signature_in_run_populate(self):
         """run_populate() has a 'force' keyword-only parameter."""

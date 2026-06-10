@@ -23,8 +23,8 @@ import pandas as pd
 from forexfactory import _cache, _pipeline
 
 # ====== CONFIG ======
-DEFAULT_CURRENCIES = ["USD"]
-DEFAULT_IMPACTS = ["high", "holiday"]
+DEFAULT_CURRENCIES = ["USD", "EUR", "GBP", "JPY"]  # Core-4 currencies (CACHE-07 / D-04)
+DEFAULT_IMPACTS = ["high", "medium", "holiday"]  # high + medium + bank holidays (CACHE-07 / D-05)
 # ====================
 
 logger = logging.getLogger(__name__)

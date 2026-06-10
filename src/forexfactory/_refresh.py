@@ -38,8 +38,8 @@ from typing import Any
 from forexfactory import _cache, _populate, _scrape
 
 # ====== CONFIG ======
-DEFAULT_CURRENCIES: list[str] = ["USD"]  # D-04
-DEFAULT_IMPACTS: list[str] = ["high", "holiday"]  # D-04
+DEFAULT_CURRENCIES: list[str] = ["USD", "EUR", "GBP", "JPY"]  # Core-4 (CACHE-07 / D-04)
+DEFAULT_IMPACTS: list[str] = ["high", "medium", "holiday"]  # high/medium/holidays (D-05)
 # ====================
 
 logger = logging.getLogger(__name__)
