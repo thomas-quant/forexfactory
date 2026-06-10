@@ -25,19 +25,20 @@ Usage:
     )
     # result == {"fetched": N, "skipped": N, "failed": N}
 """
+
 import glob
 import json
 import logging
 import os
 import time
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 from forexfactory import _cache, _populate, _scrape
 
 # ====== CONFIG ======
-DEFAULT_CURRENCIES: list[str] = ["USD"]              # D-04
-DEFAULT_IMPACTS: list[str] = ["high", "holiday"]     # D-04
+DEFAULT_CURRENCIES: list[str] = ["USD"]  # D-04
+DEFAULT_IMPACTS: list[str] = ["high", "holiday"]  # D-04
 # ====================
 
 logger = logging.getLogger(__name__)
@@ -150,14 +151,16 @@ def run_refresh(
 
             # Build per-month parquet (reuse _populate ETL, SRC-02)
             _populate.build_month_parquet(
-                resolved_cache, anchor, days,
+                resolved_cache,
+                anchor,
+                days,
                 currencies=currencies,
                 impacts=impacts,
             )
 
             # Record manifest entry (D-02 / CACHE-04)
             settled = _is_settled(anchor)
-            scraped_at = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            scraped_at = datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
             _cache.update_manifest_month(
                 resolved_cache,
                 anchor,
@@ -175,7 +178,9 @@ def run_refresh(
 
     logger.info(
         "[refresh] done — fetched=%d skipped=%d failed=%d",
-        fetched_count, skipped_count, failed_count,
+        fetched_count,
+        skipped_count,
+        failed_count,
     )
     return {"fetched": fetched_count, "skipped": skipped_count, "failed": failed_count}
 
@@ -261,7 +266,9 @@ def refresh_matured_months(
 
     logger.info(
         "[matured] done — matured=%d refreshed=%d failed=%d",
-        matured_count, refreshed_count, failed_count,
+        matured_count,
+        refreshed_count,
+        failed_count,
     )
     return {"matured": matured_count, "refreshed": refreshed_count, "failed": failed_count}
 
@@ -275,7 +282,7 @@ def widen_scope_to_cover(
     between_pages_delay: float | None = None,
     retry_delay: float | None = None,
 ) -> None:
-    """Re-fetch the full cached month range at the union scope to cover a scope-miss (CACHE-03/D-05).
+    """Re-fetch the full cached month range at union scope to cover a scope-miss (CACHE-03/D-05).
 
     Reads the manifest to determine the existing scope and the full cached month range
     (min..max of manifest month keys), then calls run_refresh(force_refresh=True) at the
@@ -305,12 +312,8 @@ def widen_scope_to_cover(
         start = end = f"{today:%Y-%m}"
 
     # Compute union scope (D-05: union preserves existing currency/impact coverage)
-    union_currencies = sorted(
-        set(scope.get("currencies", [])) | set(currencies)
-    )
-    union_impacts = sorted(
-        set(scope.get("impacts", [])) | set(impacts)
-    )
+    union_currencies = sorted(set(scope.get("currencies", [])) | set(currencies))
+    union_impacts = sorted(set(scope.get("impacts", [])) | set(impacts))
 
     # Call run_refresh with force_refresh=True; wrap any exception as AutoFetchError (D-06)
     try:
@@ -334,14 +337,13 @@ def widen_scope_to_cover(
     manifest = _cache.read_manifest(resolved_cache)
     updated_scope = manifest.get("scope", {})
     if not _cache._scope_covers(updated_scope, currencies, impacts):
-        raise AutoFetchError(
-            f"auto-fetch failed to widen scope to cover {currencies}/{impacts}"
-        )
+        raise AutoFetchError(f"auto-fetch failed to widen scope to cover {currencies}/{impacts}")
 
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 def _compute_date_range(cache_dir: Path, start: str | None, end: str | None):
     """Return (start_date, end_date) for the refresh run.
@@ -384,7 +386,7 @@ def _latest_raw_month(cache_dir: Path) -> date | None:
     # Parse the last (largest) path
     for p in reversed(paths):
         basename = os.path.basename(p)
-        stem = basename[len("days_"):-len(".json")]  # "YYYY_MM"
+        stem = basename[len("days_") : -len(".json")]  # "YYYY_MM"
         try:
             year_str, month_str = stem.split("_")
             return date(int(year_str), int(month_str), 1)

@@ -35,12 +35,12 @@ IMPERSONATE = "chrome"
 REQUEST_TIMEOUT = 30
 MAX_ATTEMPTS = 3
 BETWEEN_PAGES_DELAY = 1.0  # D-11: polite non-zero default (CONCERNS: was 0.0)
-RETRY_DELAY = 1.0           # D-11: polite non-zero default (CONCERNS: was 0.0)
+RETRY_DELAY = 1.0  # D-11: polite non-zero default (CONCERNS: was 0.0)
 
 BASE = "https://www.forexfactory.com/calendar"
 
 HEADERS = {
-    "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",  # noqa: E501 — literal HTTP Accept header; cannot shorten
     "accept-language": "en-US,en;q=0.9",
     "cache-control": "no-cache",
     "pragma": "no-cache",
@@ -147,7 +147,7 @@ def _find_matching_bracket(text: str, open_index: int) -> int:
 
 def _quote_js_object_keys(value: str) -> str:
     """Quote simple JavaScript object keys so JSON can parse them."""
-    return re.sub(r'([,{]\s*)([A-Za-z_$][\w$]*)(\s*:)', r'\1"\2"\3', value)
+    return re.sub(r"([,{]\s*)([A-Za-z_$][\w$]*)(\s*:)", r'\1"\2"\3', value)
 
 
 def _replace_single_quoted_strings(value: str) -> str:
@@ -257,11 +257,7 @@ def _select_best_days(states: dict[str, Any]) -> list:
     for key, state in states.items():
         if isinstance(state, dict) and isinstance(state.get("days"), list):
             days = state["days"]
-            event_count = sum(
-                len(day.get("events", []))
-                for day in days
-                if isinstance(day, dict)
-            )
+            event_count = sum(len(day.get("events", [])) for day in days if isinstance(day, dict))
             candidates.append((len(days), event_count, key, days))
 
     if not candidates:
@@ -273,7 +269,7 @@ def _select_best_days(states: dict[str, Any]) -> list:
 
 def _extract_days_array_from_state_object(raw: str) -> list:
     """Extract and parse only the `days` array from a JS state object."""
-    match = re.search(r'([,{]\s*)days\s*:', raw)
+    match = re.search(r"([,{]\s*)days\s*:", raw)
     if not match:
         return []
 
@@ -332,12 +328,16 @@ def scrape_month(
             last_error = exc
 
         if attempt < max_attempts:
-            logger.debug("Attempt %s/%s failed for %s: %s", attempt, max_attempts, page.url, last_error)
+            logger.debug(
+                "Attempt %s/%s failed for %s: %s", attempt, max_attempts, page.url, last_error
+            )
             if retry_delay > 0:
                 time.sleep(retry_delay)
 
     if last_error:
-        logger.warning("Failed to scrape %s after %s attempts: %s", page.anchor, max_attempts, last_error)
+        logger.warning(
+            "Failed to scrape %s after %s attempts: %s", page.anchor, max_attempts, last_error
+        )
     return []
 
 
@@ -394,7 +394,9 @@ def parse_args(argv: list[str] | None = None):
     # required (default=None); refresh computes its range dynamically in _refresh.py.
     parser.add_argument("--start-date", default=None, help="Start date, YYYY-MM-DD (required)")
     parser.add_argument("--end-date", default=None, help="End date, YYYY-MM-DD (required)")
-    parser.add_argument("--out-dir", default=OUT_DIR, help="Output directory for days_YYYY_MM.json files")
+    parser.add_argument(
+        "--out-dir", default=OUT_DIR, help="Output directory for days_YYYY_MM.json files"
+    )
     parser.add_argument(
         "--between-pages-delay",
         type=float,
@@ -437,7 +439,12 @@ def main(argv: list[str] | None = None) -> ScrapeResult:
         between_pages_delay=args.between_pages_delay,
         retry_delay=args.retry_delay,
     )
-    logger.info("Done. Success: %s, Failed/Empty: %s, Skipped: %s", result.success_count, result.fail_count, result.skip_count)
+    logger.info(
+        "Done. Success: %s, Failed/Empty: %s, Skipped: %s",
+        result.success_count,
+        result.fail_count,
+        result.skip_count,
+    )
     return result
 
 

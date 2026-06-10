@@ -10,11 +10,12 @@ Usage:
     path = _query.run_query(currencies=["USD"], impacts=["high"])
     # path is a pathlib.Path to a filtered Parquet file
 """
+
 import logging
 import re
+from collections.abc import Callable
 from datetime import date
 from pathlib import Path
-from typing import Callable
 
 import pandas as pd
 
@@ -31,6 +32,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 def _safe_token(token: str) -> str:
     """Strip characters that are not alphanumeric or hyphen (T-01-03 path-traversal guard)."""
@@ -105,6 +107,7 @@ def _raise_scope_error(
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def run_query(
     *,
     currencies: list | None = None,
@@ -178,6 +181,7 @@ def run_query(
             _raise_scope_error(currencies, impacts, scope)
         else:
             from forexfactory import _refresh  # noqa: PLC0415 — lazy; avoids circular import
+
             # D-12: fire progress("scope_miss", ...) for each uncovered pair BEFORE fetching
             if progress is not None:
                 cached_currencies: set = set(scope.get("currencies", []))

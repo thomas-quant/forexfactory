@@ -4,6 +4,7 @@ Regression tests for src/forexfactory/_cache.py.
 Covers: path helpers, manifest round-trip, env override, ensure_dirs,
 update_manifest_month, and scope-coverage logic.
 """
+
 import os
 import tempfile
 import unittest
@@ -84,9 +85,7 @@ class CacheTests(unittest.TestCase):
             cache_dir = Path(tmpdir)
             manifest = {
                 "scope": {"currencies": ["USD"], "impacts": ["high"]},
-                "months": {
-                    "2024-03": {"scraped_at": "2026-06-08T12:00:00Z", "settled": True}
-                },
+                "months": {"2024-03": {"scraped_at": "2026-06-08T12:00:00Z", "settled": True}},
             }
             _cache.write_manifest(cache_dir, manifest)
             loaded = _cache.read_manifest(cache_dir)
@@ -145,7 +144,7 @@ class CacheTests(unittest.TestCase):
         self.assertFalse(_cache._scope_covers({}, ["USD"], ["high"]))
 
     def test_update_manifest_month_union_merges_scope_across_two_calls(self):
-        """WR-01: two update_manifest_month calls with different scopes union-merge, not overwrite."""
+        """WR-01: two update_manifest_month calls with different scopes union-merge."""
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = Path(tmpdir)
             # First call: USD / high

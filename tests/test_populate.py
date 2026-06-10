@@ -5,13 +5,13 @@ Covers: happy path, default scope (D-04), all-months default (D-05),
         DATA-01 column schema, incremental skip (D-06), scope-aware rebuild,
         empty-raw reprocess (QUAL-03 / SC5).
 """
+
 import json
-import os
 import tempfile
 import unittest
-from datetime import date, datetime, timezone
+from datetime import date
 from pathlib import Path
-from unittest.mock import patch, call
+from unittest.mock import patch
 
 
 class PopulateHappyPathTests(unittest.TestCase):
@@ -48,7 +48,6 @@ class PopulateHappyPathTests(unittest.TestCase):
 
     def test_writes_per_month_parquet(self):
         """run_populate writes a parquet file for each processed month (D-01)."""
-        import pandas as pd
         from forexfactory import _populate
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -69,8 +68,9 @@ class PopulateHappyPathTests(unittest.TestCase):
             self.assertEqual(result["empty"], 0)
 
     def test_parquet_has_data01_columns(self):
-        """Written parquet has exactly the DATA-01 columns: datetime_utc, currency, impact, title, id, leaked."""
+        """Written parquet has the DATA-01 columns: datetime_utc, currency, impact, title."""
         import pandas as pd
+
         from forexfactory import _populate
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -97,8 +97,7 @@ class PopulateHappyPathTests(unittest.TestCase):
 
     def test_manifest_has_settled_and_scraped_at(self):
         """Manifest entry for the populated month has settled + scraped_at (D-02/CACHE-04)."""
-        import json
-        from forexfactory import _populate, _cache
+        from forexfactory import _cache, _populate
 
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir)
@@ -119,7 +118,7 @@ class PopulateHappyPathTests(unittest.TestCase):
 
     def test_manifest_scope_is_default_usd_high_holiday(self):
         """Default scope in manifest is currencies=[USD], impacts=[high, holiday] (D-04)."""
-        from forexfactory import _populate, _cache
+        from forexfactory import _cache, _populate
 
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir)
@@ -140,6 +139,7 @@ class PopulateHappyPathTests(unittest.TestCase):
     def test_eur_event_filtered_out_by_default_scope(self):
         """EUR events are filtered out when running with default scope (D-04)."""
         import pandas as pd
+
         from forexfactory import _populate
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -162,7 +162,6 @@ class PopulateHappyPathTests(unittest.TestCase):
 
     def test_processes_all_months_by_default(self):
         """With no start/end, all days_*.json months are processed (D-05)."""
-        import pandas as pd
         from forexfactory import _populate
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -185,8 +184,9 @@ class PopulateHappyPathTests(unittest.TestCase):
 
     def test_no_curl_cffi_import(self):
         """_populate.py does not import curl_cffi (no network, SC2)."""
+        import inspect
+
         import forexfactory._populate as populate_module
-        import ast, inspect
 
         src = inspect.getsource(populate_module)
         self.assertNotIn("curl_cffi", src, "_populate.py must not import curl_cffi")
@@ -336,7 +336,7 @@ class PopulateIncrementalTests(unittest.TestCase):
 
     def test_empty_raw_not_recorded_in_manifest(self):
         """Empty raw JSON must not produce a manifest entry (SC5 / QUAL-03)."""
-        from forexfactory import _populate, _cache
+        from forexfactory import _cache, _populate
 
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir)
@@ -405,6 +405,7 @@ class PopulateIncrementalTests(unittest.TestCase):
         it — leaving month-2 parquet with the OLD narrow-scope data.
         """
         import pandas as pd
+
         from forexfactory import _populate
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -457,7 +458,8 @@ class PopulateIncrementalTests(unittest.TestCase):
                 impacts=["high", "holiday"],
             )
             self.assertEqual(
-                r2["populated"], 2,
+                r2["populated"],
+                2,
                 "BL-01: ALL months must be rebuilt on wider-scope run, not just the first",
             )
             self.assertEqual(r2["skipped"], 0)
@@ -467,7 +469,8 @@ class PopulateIncrementalTests(unittest.TestCase):
                 df = pd.read_parquet(cache_dir / f"{month}.parquet")
                 eur_rows = df[df["currency"] == "EUR"]
                 self.assertGreater(
-                    len(eur_rows), 0,
+                    len(eur_rows),
+                    0,
                     f"BL-01: {month} parquet must contain EUR rows after wider-scope rebuild",
                 )
 
@@ -478,6 +481,7 @@ class PopulateNullDatelineTests(unittest.TestCase):
     def test_null_dateline_holiday_event_does_not_crash(self):
         """WR-02: a holiday event with dateline=None becomes NaT instead of raising ParserError."""
         import pandas as pd
+
         from forexfactory import _populate
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -521,6 +525,7 @@ class PopulateNullDatelineTests(unittest.TestCase):
     def test_zero_dateline_holiday_event_does_not_crash(self):
         """WR-02: a holiday event with dateline=0 (falsy) becomes NaT instead of crashing."""
         import pandas as pd
+
         from forexfactory import _populate
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -601,6 +606,7 @@ class PopulatePhase2SchemaTests(unittest.TestCase):
     def test_parquet_has_phase2_columns(self):
         """Built parquet has the wide Phase-2 schema: new analytical columns present."""
         import pandas as pd
+
         from forexfactory import _populate
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -635,6 +641,7 @@ class PopulatePhase2SchemaTests(unittest.TestCase):
     def test_phase2_dtypes_correct(self):
         """Phase-2 parquet dtypes: forecast float64, hasDataValues bool, actualBetterWorse Int64."""
         import pandas as pd
+
         from forexfactory import _populate
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -649,20 +656,24 @@ class PopulatePhase2SchemaTests(unittest.TestCase):
 
             df = pd.read_parquet(cache_dir / "2026-03.parquet")
 
-            self.assertEqual(str(df["forecast"].dtype), "float64",
-                             "forecast column must be float64")
-            self.assertEqual(str(df["hasDataValues"].dtype), "bool",
-                             "hasDataValues column must be bool")
-            self.assertEqual(str(df["actualBetterWorse"].dtype), "Int64",
-                             "actualBetterWorse must be nullable Int64")
-            self.assertEqual(str(df["ebaseId"].dtype), "Int64",
-                             "ebaseId must be nullable Int64")
-            self.assertEqual(str(df["id"].dtype), "Int64",
-                             "id must be nullable Int64")
+            self.assertEqual(
+                str(df["forecast"].dtype), "float64", "forecast column must be float64"
+            )
+            self.assertEqual(
+                str(df["hasDataValues"].dtype), "bool", "hasDataValues column must be bool"
+            )
+            self.assertEqual(
+                str(df["actualBetterWorse"].dtype),
+                "Int64",
+                "actualBetterWorse must be nullable Int64",
+            )
+            self.assertEqual(str(df["ebaseId"].dtype), "Int64", "ebaseId must be nullable Int64")
+            self.assertEqual(str(df["id"].dtype), "Int64", "id must be nullable Int64")
 
     def test_speaks_event_retained_in_parquet(self):
         """D-09: A speech event (hasDataValues=False) is RETAINED — no longer dropped."""
         import pandas as pd
+
         from forexfactory import _populate
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -677,7 +688,7 @@ class PopulatePhase2SchemaTests(unittest.TestCase):
 
             df = pd.read_parquet(cache_dir / "2026-03.parquet")
             self.assertGreater(len(df), 0, "speaks event must be retained in parquet (D-09)")
-            speaks_rows = df[df["hasDataValues"] == False]
+            speaks_rows = df[~df["hasDataValues"]]
             self.assertEqual(len(speaks_rows), 1, "speaks event row must be present")
 
     def test_force_true_overwrites_cached_month(self):
@@ -703,15 +714,13 @@ class PopulatePhase2SchemaTests(unittest.TestCase):
             self.assertEqual(result2["populated"], 0)
 
             # Third populate with force=True — must re-populate, not skip
-            result3 = _populate.run_populate(
-                cache_dir=cache_dir, raw_dir=str(raw_dir), force=True
-            )
+            result3 = _populate.run_populate(cache_dir=cache_dir, raw_dir=str(raw_dir), force=True)
             self.assertEqual(result3["populated"], 1)
             self.assertEqual(result3["skipped"], 0)
 
     def test_schema_version_in_manifest_after_populate(self):
         """After run_populate, manifest has schema_version == '2' (Open Question 3 resolution)."""
-        from forexfactory import _populate, _cache
+        from forexfactory import _cache, _populate
 
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir)
@@ -724,18 +733,24 @@ class PopulatePhase2SchemaTests(unittest.TestCase):
             _populate.run_populate(cache_dir=cache_dir, raw_dir=str(raw_dir))
 
             manifest = _cache.read_manifest(cache_dir)
-            self.assertEqual(manifest.get("schema_version"), "2",
-                             "manifest must have schema_version == '2' after populate")
+            self.assertEqual(
+                manifest.get("schema_version"),
+                "2",
+                "manifest must have schema_version == '2' after populate",
+            )
 
     def test_schema_version_constant_in_cache_module(self):
         """_cache.SCHEMA_VERSION == '2'."""
         from forexfactory import _cache
+
         self.assertEqual(_cache.SCHEMA_VERSION, "2")
 
     def test_force_signature_in_run_populate(self):
         """run_populate() has a 'force' keyword-only parameter."""
         import inspect
+
         from forexfactory import _populate
+
         params = inspect.signature(_populate.run_populate).parameters
         self.assertIn("force", params, "run_populate must have a 'force' kwarg")
 
@@ -755,15 +770,15 @@ class PopulateForceRefreshTests(unittest.TestCase):
 
     def _make_html(self, days):
         import json
+
         return (
-            '<script>window.calendarComponentStates = '
+            "<script>window.calendarComponentStates = "
             f'{{"month": {{"days": {json.dumps(days)}}}}};</script>'
         )
 
     def test_force_refresh_true_returns_fetched_skipped_failed_dict(self):
         """run_populate(force_refresh=True) returns {"fetched","skipped","failed"} dict (D-04)."""
-        import json
-        from forexfactory import _populate, _scrape, _cache
+        from forexfactory import _cache, _populate, _scrape
 
         days = [{"events": [self._usd_high_event()]}]
 
@@ -774,19 +789,21 @@ class PopulateForceRefreshTests(unittest.TestCase):
 
             # Pre-seed a parquet + manifest entry for the month
             _cache.ensure_dirs(cache_dir)
-            from datetime import timezone
             scraped_at = "2026-01-01T00:00:00Z"
             _cache.update_manifest_month(
-                cache_dir, date(2026, 5, 1),
+                cache_dir,
+                date(2026, 5, 1),
                 scraped_at=scraped_at,
                 settled=True,
                 currencies=["USD"],
                 impacts=["high", "holiday"],
             )
 
-            html = self._make_html(days)
-            with patch.object(_scrape, "scrape_month", return_value=days), \
-                 patch.object(_scrape, "build_session", return_value=object()):
+            self._make_html(days)
+            with (
+                patch.object(_scrape, "scrape_month", return_value=days),
+                patch.object(_scrape, "build_session", return_value=object()),
+            ):
                 result = _populate.run_populate(
                     force_refresh=True,
                     start="2026-05",
@@ -805,8 +822,9 @@ class PopulateForceRefreshTests(unittest.TestCase):
             self.assertEqual(result["failed"], 0)
 
     def test_force_refresh_false_returns_populated_skipped_empty_dict(self):
-        """run_populate(force_refresh=False) default disk-ingest returns populated/skipped/empty dict (D-01 unchanged)."""
+        """run_populate(force_refresh=False) disk-ingest returns populated/skipped/empty dict."""
         import json
+
         from forexfactory import _populate
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -834,9 +852,10 @@ class PopulateForceRefreshTests(unittest.TestCase):
 
     def test_force_refresh_true_parquet_overwritten(self):
         """run_populate(force_refresh=True) overwrites the existing month parquet."""
-        import time as time_module
         import json
-        from forexfactory import _populate, _scrape, _cache, _pipeline
+        import time as time_module
+
+        from forexfactory import _cache, _populate, _scrape
 
         days = [{"events": [self._usd_high_event()]}]
 
@@ -849,11 +868,14 @@ class PopulateForceRefreshTests(unittest.TestCase):
 
             # First, populate normally to create the initial parquet
             (raw_dir / "days_2026_05.json").write_text(
-                json.dumps(days), encoding="utf-8",
+                json.dumps(days),
+                encoding="utf-8",
             )
             _populate.run_populate(
-                cache_dir=cache_dir, raw_dir=str(raw_dir),
-                currencies=["USD"], impacts=["high", "holiday"],
+                cache_dir=cache_dir,
+                raw_dir=str(raw_dir),
+                currencies=["USD"],
+                impacts=["high", "holiday"],
             )
 
             parquet_path = _cache.month_parquet_path(cache_dir, date(2026, 5, 1))
@@ -864,8 +886,10 @@ class PopulateForceRefreshTests(unittest.TestCase):
             time_module.sleep(0.05)
 
             # Force-refresh: must overwrite parquet
-            with patch.object(_scrape, "scrape_month", return_value=days), \
-                 patch.object(_scrape, "build_session", return_value=object()):
+            with (
+                patch.object(_scrape, "scrape_month", return_value=days),
+                patch.object(_scrape, "build_session", return_value=object()),
+            ):
                 result = _populate.run_populate(
                     force_refresh=True,
                     start="2026-05",
@@ -876,15 +900,17 @@ class PopulateForceRefreshTests(unittest.TestCase):
                 )
 
             mtime_after = parquet_path.stat().st_mtime
-            self.assertGreater(mtime_after, mtime_before,
-                               "parquet mtime must increase after force_refresh overwrite")
+            self.assertGreater(
+                mtime_after,
+                mtime_before,
+                "parquet mtime must increase after force_refresh overwrite",
+            )
             self.assertEqual(result["fetched"], 1)
 
     def test_library_populate_returns_same_dict_as_engine(self):
-        """forexfactory.populate(force_refresh=True) returns the same dict shape as run_populate (D-03)."""
-        import json
+        """forexfactory.populate(force_refresh=True) returns the same dict shape as run_populate."""
         import forexfactory
-        from forexfactory import _scrape, _cache
+        from forexfactory import _cache, _scrape
 
         days = [{"events": [self._usd_high_event()]}]
 
@@ -893,8 +919,10 @@ class PopulateForceRefreshTests(unittest.TestCase):
             cache_dir.mkdir()
             _cache.ensure_dirs(cache_dir)
 
-            with patch.object(_scrape, "scrape_month", return_value=days), \
-                 patch.object(_scrape, "build_session", return_value=object()):
+            with (
+                patch.object(_scrape, "scrape_month", return_value=days),
+                patch.object(_scrape, "build_session", return_value=object()),
+            ):
                 result = forexfactory.populate(
                     force_refresh=True,
                     start="2026-05",
@@ -909,8 +937,8 @@ class PopulateForceRefreshTests(unittest.TestCase):
             self.assertIn("failed", result, "forexfactory.populate must return 'failed' key")
 
     def test_force_refresh_no_range_covers_full_cached_span(self):
-        """WR-01: force_refresh=True with no start/end re-scrapes the full cached span, not just the current month."""
-        from forexfactory import _populate, _scrape, _cache
+        """WR-01: force_refresh=True with no start/end re-scrapes the full cached span."""
+        from forexfactory import _cache, _populate, _scrape
 
         scrape_calls = []
 
@@ -927,15 +955,18 @@ class PopulateForceRefreshTests(unittest.TestCase):
             for year, month in [(2026, 3), (2026, 4)]:
                 anchor = date(year, month, 1)
                 _cache.update_manifest_month(
-                    cache_dir, anchor,
+                    cache_dir,
+                    anchor,
                     scraped_at="2026-01-01T00:00:00Z",
                     settled=True,
                     currencies=["USD"],
                     impacts=["high", "holiday"],
                 )
 
-            with patch.object(_scrape, "scrape_month", side_effect=counting_scrape), \
-                 patch.object(_scrape, "build_session", return_value=object()):
+            with (
+                patch.object(_scrape, "scrape_month", side_effect=counting_scrape),
+                patch.object(_scrape, "build_session", return_value=object()),
+            ):
                 _populate.run_populate(
                     force_refresh=True,
                     cache_dir=cache_dir,
@@ -943,16 +974,18 @@ class PopulateForceRefreshTests(unittest.TestCase):
 
             # Must have scraped BOTH cached months, not just the current month.
             self.assertIn(
-                date(2026, 3, 1), scrape_calls,
+                date(2026, 3, 1),
+                scrape_calls,
                 "WR-01: force_refresh with no range must re-scrape 2026-03 (start of cached span)",
             )
             self.assertIn(
-                date(2026, 4, 1), scrape_calls,
+                date(2026, 4, 1),
+                scrape_calls,
                 "WR-01: force_refresh with no range must re-scrape 2026-04 (end of cached span)",
             )
 
     def test_force_refresh_uses_injected_session_not_build_session(self):
-        """WR-03: session passed to run_populate is forwarded to run_refresh on the force_refresh path.
+        """WR-03: injected session is forwarded to run_refresh on the force_refresh path.
 
         When an injected session is provided, _scrape.build_session() must NOT be called.
         The injected session must be the one used by scrape_month.
@@ -977,8 +1010,10 @@ class PopulateForceRefreshTests(unittest.TestCase):
             cache_dir = Path(tmpdir) / "cache"
             cache_dir.mkdir()
 
-            with patch.object(_scrape, "scrape_month", side_effect=capture_session_scrape), \
-                 patch.object(_scrape, "build_session", side_effect=fake_build_session):
+            with (
+                patch.object(_scrape, "scrape_month", side_effect=capture_session_scrape),
+                patch.object(_scrape, "build_session", side_effect=fake_build_session),
+            ):
                 _populate.run_populate(
                     force_refresh=True,
                     start="2026-05",
@@ -989,7 +1024,8 @@ class PopulateForceRefreshTests(unittest.TestCase):
 
         # build_session must NOT have been called — injected session was forwarded.
         self.assertEqual(
-            len(build_session_calls), 0,
+            len(build_session_calls),
+            0,
             "WR-03: build_session must not be called when a session is injected via run_populate",
         )
         # The injected session must have been passed to scrape_month.
@@ -1001,10 +1037,11 @@ class PopulateForceRefreshTests(unittest.TestCase):
     def test_force_refresh_signature_in_run_populate(self):
         """run_populate() has a 'force_refresh' keyword-only parameter (D-03)."""
         import inspect
+
         from forexfactory import _populate
+
         params = inspect.signature(_populate.run_populate).parameters
-        self.assertIn("force_refresh", params,
-                      "run_populate must have a 'force_refresh' kwarg")
+        self.assertIn("force_refresh", params, "run_populate must have a 'force_refresh' kwarg")
 
 
 class PopulateAutoFetchTests(unittest.TestCase):
@@ -1016,44 +1053,63 @@ class PopulateAutoFetchTests(unittest.TestCase):
 
         _cache.ensure_dirs(cache_dir)
         anchor = date(2026, 5, 1)
-        stale_days = [{"events": [{
-            "currency": "USD",
-            "impactName": "High Impact Expected",
-            "name": "CPI y/y",
-            "dateline": 1746057600,
-            "id": "cpi-1",
-            "leaked": False,
-            "hasDataValues": True,
-            "forecast": "4.3%",
-        }]}]
+        stale_days = [
+            {
+                "events": [
+                    {
+                        "currency": "USD",
+                        "impactName": "High Impact Expected",
+                        "name": "CPI y/y",
+                        "dateline": 1746057600,
+                        "id": "cpi-1",
+                        "leaked": False,
+                        "hasDataValues": True,
+                        "forecast": "4.3%",
+                    }
+                ]
+            }
+        ]
         _populate.build_month_parquet(
-            cache_dir, anchor, stale_days,
-            currencies=["USD"], impacts=["high", "holiday"],
+            cache_dir,
+            anchor,
+            stale_days,
+            currencies=["USD"],
+            impacts=["high", "holiday"],
         )
-        _cache.write_manifest(cache_dir, {
-            "scope": {"currencies": ["USD"], "impacts": ["high", "holiday"]},
-            "months": {
-                "2026-05": {"scraped_at": "2026-01-01T00:00:00Z", "settled": False},
+        _cache.write_manifest(
+            cache_dir,
+            {
+                "scope": {"currencies": ["USD"], "impacts": ["high", "holiday"]},
+                "months": {
+                    "2026-05": {"scraped_at": "2026-01-01T00:00:00Z", "settled": False},
+                },
             },
-        })
+        )
 
     def _fresh_days(self):
-        return [{"events": [{
-            "currency": "USD",
-            "impactName": "High Impact Expected",
-            "name": "CPI y/y",
-            "dateline": 1746057600,
-            "id": "cpi-1",
-            "leaked": False,
-            "hasDataValues": True,
-            "forecast": "4.3%",
-            "actual": "4.5%",
-        }]}]
+        return [
+            {
+                "events": [
+                    {
+                        "currency": "USD",
+                        "impactName": "High Impact Expected",
+                        "name": "CPI y/y",
+                        "dateline": 1746057600,
+                        "id": "cpi-1",
+                        "leaked": False,
+                        "hasDataValues": True,
+                        "forecast": "4.3%",
+                        "actual": "4.5%",
+                    }
+                ]
+            }
+        ]
 
     def test_populate_auto_fetch_true_matures_month(self):
         """run_populate(auto_fetch=True) re-fetches a matured settled:false month (D-08)."""
         import pandas as pd
-        from forexfactory import _populate, _scrape, _cache
+
+        from forexfactory import _cache, _populate, _scrape
 
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir)
@@ -1074,6 +1130,7 @@ class PopulateAutoFetchTests(unittest.TestCase):
             parquet_path = _cache.month_parquet_path(cache_dir, date(2026, 5, 1))
             df = pd.read_parquet(parquet_path)
             import math
+
             self.assertFalse(
                 math.isnan(df.iloc[0]["actual"]),
                 "populate(auto_fetch=True) must surface actual value after matured re-fetch (D-08)",
@@ -1104,16 +1161,18 @@ class PopulateAutoFetchTests(unittest.TestCase):
                     auto_fetch=False,
                 )
 
-            self.assertEqual(len(mock_calls), 0,
-                             "auto_fetch=False must not trigger any scrape calls (D-09)")
+            self.assertEqual(
+                len(mock_calls), 0, "auto_fetch=False must not trigger any scrape calls (D-09)"
+            )
 
     def test_auto_fetch_signature_in_run_populate(self):
         """run_populate() has an 'auto_fetch' keyword-only parameter (D-09)."""
         import inspect
+
         from forexfactory import _populate
+
         params = inspect.signature(_populate.run_populate).parameters
-        self.assertIn("auto_fetch", params,
-                      "run_populate must have an 'auto_fetch' kwarg")
+        self.assertIn("auto_fetch", params, "run_populate must have an 'auto_fetch' kwarg")
 
 
 if __name__ == "__main__":

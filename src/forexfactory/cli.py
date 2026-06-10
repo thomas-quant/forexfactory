@@ -18,6 +18,7 @@ Usage::
     # Path-only stdout enables shell capture (D-10):
     PARQUET=$(forexfactory query --currency USD --impact high)
 """
+
 import argparse
 import json
 import logging
@@ -43,6 +44,7 @@ logger = logging.getLogger(__name__)
 # Progress callback (D-11/D-12): maps structured events to stdout banners
 # ---------------------------------------------------------------------------
 
+
 def _print_progress(event: str, **kwargs) -> None:
     """Print a D-12 progress banner to stdout for auto-fetch events.
 
@@ -61,6 +63,7 @@ def _print_progress(event: str, **kwargs) -> None:
 # Validation helpers
 # ---------------------------------------------------------------------------
 
+
 def _validate_month(value: str | None, name: str) -> None:
     """Validate that a --start or --end value has YYYY-MM shape; sys.exit(1) if not."""
     if value is None:
@@ -69,7 +72,7 @@ def _validate_month(value: str | None, name: str) -> None:
         parts = value.split("-")
         if len(parts) != 2:
             raise ValueError("expected exactly two dash-separated parts")
-        year, month = int(parts[0]), int(parts[1])
+        _, month = int(parts[0]), int(parts[1])
         # WR-05: range-check month so "2024-99" / "2024-00" produce a clean
         # argparse error instead of an unhandled ValueError traceback later.
         if not (1 <= month <= 12):
@@ -82,6 +85,7 @@ def _validate_month(value: str | None, name: str) -> None:
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
+
 
 def main(argv: list[str] | None = None) -> int:
     """Entry point for the ``forexfactory`` console script."""
@@ -106,31 +110,42 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     pop.add_argument(
-        "--currency", dest="currency", action="append", metavar="CURRENCY",
+        "--currency",
+        dest="currency",
+        action="append",
+        metavar="CURRENCY",
         help="Currency to include (repeatable; default: USD) [D-12]",
     )
     pop.add_argument(
-        "--impact", dest="impact", action="append", metavar="IMPACT",
+        "--impact",
+        dest="impact",
+        action="append",
+        metavar="IMPACT",
         help="Impact level to include (repeatable; default: high holiday) [D-12]",
     )
     pop.add_argument(
-        "--start", default=None, metavar="YYYY-MM",
+        "--start",
+        default=None,
+        metavar="YYYY-MM",
         help="First month to process (default: all on disk — D-05)",
     )
     pop.add_argument(
-        "--end", default=None, metavar="YYYY-MM",
+        "--end",
+        default=None,
+        metavar="YYYY-MM",
         help="Last month to process (default: all on disk — D-05)",
     )
     pop.add_argument(
-        "--cache-dir", default=None, metavar="DIR",
+        "--cache-dir",
+        default=None,
+        metavar="DIR",
         help="Override cache directory (default: ~/.cache/forexfactory) [CACHE-01]",
     )
     pop.add_argument(
-        "--raw-dir", default=_populate.RAW_INPUT_DIR, metavar="DIR",
-        help=(
-            "Directory containing days_YYYY_MM.json files "
-            f"(default: {_populate.RAW_INPUT_DIR})"
-        ),
+        "--raw-dir",
+        default=_populate.RAW_INPUT_DIR,
+        metavar="DIR",
+        help=(f"Directory containing days_YYYY_MM.json files (default: {_populate.RAW_INPUT_DIR})"),
     )
     pop.add_argument(
         "--force",
@@ -164,23 +179,35 @@ def main(argv: list[str] | None = None) -> int:
         help="Fetch months not yet cached over the network (D-11, SRC-02)",
     )
     rfr.add_argument(
-        "--currency", dest="currency", action="append", metavar="CURRENCY",
+        "--currency",
+        dest="currency",
+        action="append",
+        metavar="CURRENCY",
         help="Currency to fetch (repeatable; default: USD) [D-12]",
     )
     rfr.add_argument(
-        "--impact", dest="impact", action="append", metavar="IMPACT",
+        "--impact",
+        dest="impact",
+        action="append",
+        metavar="IMPACT",
         help="Impact level to fetch (repeatable; default: high holiday) [D-12]",
     )
     rfr.add_argument(
-        "--start", default=None, metavar="YYYY-MM",
+        "--start",
+        default=None,
+        metavar="YYYY-MM",
         help="First month to fetch (default: gap-fill from last cached — D-11)",
     )
     rfr.add_argument(
-        "--end", default=None, metavar="YYYY-MM",
+        "--end",
+        default=None,
+        metavar="YYYY-MM",
         help="Last month to fetch (default: current month — D-11)",
     )
     rfr.add_argument(
-        "--cache-dir", default=None, metavar="DIR",
+        "--cache-dir",
+        default=None,
+        metavar="DIR",
         help="Override cache directory (default: ~/.cache/forexfactory) [CACHE-01]",
     )
     rfr.add_argument(
@@ -219,23 +246,35 @@ def main(argv: list[str] | None = None) -> int:
         help="Query the cache; prints the result parquet path to stdout (D-10)",
     )
     qry.add_argument(
-        "--currency", dest="currency", action="append", metavar="CURRENCY",
+        "--currency",
+        dest="currency",
+        action="append",
+        metavar="CURRENCY",
         help="Currency to query (repeatable; default: USD) [D-12]",
     )
     qry.add_argument(
-        "--impact", dest="impact", action="append", metavar="IMPACT",
+        "--impact",
+        dest="impact",
+        action="append",
+        metavar="IMPACT",
         help="Impact level to query (repeatable; default: high holiday) [D-12]",
     )
     qry.add_argument(
-        "--start", default=None, metavar="YYYY-MM",
+        "--start",
+        default=None,
+        metavar="YYYY-MM",
         help="First month to query (default: all cached)",
     )
     qry.add_argument(
-        "--end", default=None, metavar="YYYY-MM",
+        "--end",
+        default=None,
+        metavar="YYYY-MM",
         help="Last month to query (default: all cached)",
     )
     qry.add_argument(
-        "--cache-dir", default=None, metavar="DIR",
+        "--cache-dir",
+        default=None,
+        metavar="DIR",
         help="Override cache directory (default: ~/.cache/forexfactory) [CACHE-01]",
     )
     qry.add_argument(
@@ -263,7 +302,9 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     sts.add_argument(
-        "--cache-dir", default=None, metavar="DIR",
+        "--cache-dir",
+        default=None,
+        metavar="DIR",
         help="Override cache directory (default: ~/.cache/forexfactory) [CACHE-01]",
     )
     sts.add_argument(
@@ -288,8 +329,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "refresh":
         cache_dir = Path(args.cache_dir) if args.cache_dir is not None else None
         result = _refresh.run_refresh(
-            currencies=args.currency,   # None → service applies D-04 default
-            impacts=args.impact,        # None → service applies D-04 default
+            currencies=args.currency,  # None → service applies D-04 default
+            impacts=args.impact,  # None → service applies D-04 default
             start=args.start,
             end=args.end,
             cache_dir=cache_dir,
@@ -299,15 +340,17 @@ def main(argv: list[str] | None = None) -> int:
         )
         logger.info(
             "[refresh] done — fetched=%d skipped=%d failed=%d",
-            result["fetched"], result["skipped"], result["failed"],
+            result["fetched"],
+            result["skipped"],
+            result["failed"],
         )
         return 0
 
     if args.command == "populate":
         cache_dir = Path(args.cache_dir) if args.cache_dir is not None else None
         result = _populate.run_populate(
-            currencies=args.currency,   # None → service applies D-04 default (USD)
-            impacts=args.impact,        # None → service applies D-04 default (high, holiday)
+            currencies=args.currency,  # None → service applies D-04 default (USD)
+            impacts=args.impact,  # None → service applies D-04 default (high, holiday)
             start=args.start,
             end=args.end,
             raw_dir=args.raw_dir,
@@ -320,12 +363,16 @@ def main(argv: list[str] | None = None) -> int:
             # D-04: force-refresh returns fetched/skipped/failed
             logger.info(
                 "[populate] force-refresh done — fetched=%d skipped=%d failed=%d",
-                result["fetched"], result["skipped"], result["failed"],
+                result["fetched"],
+                result["skipped"],
+                result["failed"],
             )
         else:
             logger.info(
                 "[populate] done — populated=%d skipped=%d empty=%d",
-                result["populated"], result["skipped"], result["empty"],
+                result["populated"],
+                result["skipped"],
+                result["empty"],
             )
         return 0
 
@@ -397,9 +444,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"cache dir    : {status_data['cache_dir']}")
             print(f"schema ver   : {status_data['schema_version']}")
             print(f"scope        : currencies=[{currencies_str}] impacts=[{impacts_str}]")
-            print(
-                f"date range   : {start} — {end} ({count} month{'s' if count != 1 else ''})"
-            )
+            print(f"date range   : {start} — {end} ({count} month{'s' if count != 1 else ''})")
             print(f"settled      : {settled} month{'s' if settled != 1 else ''}")
             print(f"unsettled    : {unsettled} month{'s' if unsettled != 1 else ''}")
         return 0

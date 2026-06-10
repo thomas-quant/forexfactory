@@ -5,6 +5,8 @@ Covers: D-07 (returns Path to consolidated parquet), D-08 (deterministic path,
         overwritten each call), D-09 (out-of-scope raises ValueError with guidance),
         SC4 (forexfactory.get() returns Path), DATA-01 (correct columns).
 """
+
+import contextlib
 import math
 import pathlib
 import tempfile
@@ -16,10 +18,10 @@ from unittest.mock import patch
 
 import pandas as pd
 
-
 # ---------------------------------------------------------------------------
 # Helpers shared by both test classes
 # ---------------------------------------------------------------------------
+
 
 def _make_parquet(path: Path, rows: list) -> None:
     """Write a DATA-01-schema parquet to path (zstd level 3)."""
@@ -92,6 +94,7 @@ def _holiday_row(dt: str = "2026-03-01 00:00:00") -> dict:
 # Task 1 — D-07 / D-08 / SC4: happy path tests
 # ---------------------------------------------------------------------------
 
+
 class QueryHappyPathTests(unittest.TestCase):
     """Task 1 — run_query returns filtered Path; forexfactory.get() works (D-07/D-08/SC4)."""
 
@@ -109,7 +112,7 @@ class QueryHappyPathTests(unittest.TestCase):
         if scope is None:
             scope = {"currencies": ["USD"], "impacts": ["high", "holiday"]}
         manifest = {"scope": scope, "months": {}}
-        for (year, month), rows in zip(months, rows_per_month):
+        for (year, month), rows in zip(months, rows_per_month, strict=False):
             anchor = date(year, month, 1)
             p = _cache.month_parquet_path(cache_dir, anchor)
             _make_parquet(p, rows)
@@ -121,7 +124,7 @@ class QueryHappyPathTests(unittest.TestCase):
 
     def test_run_query_returns_path_under_queries_dir(self):
         """run_query returns an absolute Path inside queries_dir (D-07)."""
-        from forexfactory import _query, _cache
+        from forexfactory import _cache, _query
 
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = Path(tmpdir) / "cache"
@@ -138,7 +141,7 @@ class QueryHappyPathTests(unittest.TestCase):
             self.assertEqual(result.parent, _cache.queries_dir(cache_dir))
 
     def test_result_parquet_has_data01_columns(self):
-        """Result parquet has all DATA-01 columns (datetime_utc, currency, impact, title, id, leaked)."""
+        """Result parquet has all DATA-01 columns (datetime_utc, currency, impact, title, id)."""
         from forexfactory import _query
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -157,7 +160,7 @@ class QueryHappyPathTests(unittest.TestCase):
 
     def test_result_parquet_filtered_to_requested_currency_and_impact(self):
         """Result parquet contains only rows matching requested currencies/impacts."""
-        from forexfactory import _query, _cache
+        from forexfactory import _query
 
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = Path(tmpdir) / "cache"
@@ -265,23 +268,27 @@ class QueryHappyPathTests(unittest.TestCase):
 # Task 2 — D-09: out-of-scope error tests
 # ---------------------------------------------------------------------------
 
+
 class QueryScopeErrorTests(unittest.TestCase):
-    """Task 2 — D-09: out-of-scope request with auto_fetch=False raises ValueError with populate guidance."""
+    """D-09: out-of-scope request with auto_fetch=False raises ValueError with populate guidance."""
 
     def _setup_usd_high_only(self, cache_dir: Path) -> None:
         """Write a manifest with scope limited to USD/high + holiday."""
         from forexfactory import _cache
 
         _cache.ensure_dirs(cache_dir)
-        _cache.write_manifest(cache_dir, {
-            "scope": {"currencies": ["USD"], "impacts": ["high", "holiday"]},
-            "months": {
-                "2026-03": {"scraped_at": "2026-06-08T00:00:00Z", "settled": True},
+        _cache.write_manifest(
+            cache_dir,
+            {
+                "scope": {"currencies": ["USD"], "impacts": ["high", "holiday"]},
+                "months": {
+                    "2026-03": {"scraped_at": "2026-06-08T00:00:00Z", "settled": True},
+                },
             },
-        })
+        )
 
     def test_out_of_scope_raises_value_error(self):
-        """Requesting EUR/medium when scope is USD/high raises ValueError with auto_fetch=False (D-07/D-09)."""
+        """EUR/medium request when scope is USD/high raises ValueError (auto_fetch=False / D-09)."""
         from forexfactory import _query
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -320,22 +327,20 @@ class QueryScopeErrorTests(unittest.TestCase):
                 )
 
     def test_out_of_scope_does_not_write_result_file(self):
-        """No result parquet is written when the request is out of scope with auto_fetch=False (D-09)."""
-        from forexfactory import _query, _cache
+        """No result parquet written when request is out of scope with auto_fetch=False (D-09)."""
+        from forexfactory import _cache, _query
 
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = Path(tmpdir) / "cache"
             self._setup_usd_high_only(cache_dir)
 
-            try:
+            with contextlib.suppress(ValueError):
                 _query.run_query(
                     currencies=["EUR"],
                     impacts=["medium"],
                     cache_dir=cache_dir,
                     auto_fetch=False,
                 )
-            except ValueError:
-                pass
 
             q_dir = _cache.queries_dir(cache_dir)
             written = list(q_dir.glob("*.parquet")) if q_dir.exists() else []
@@ -343,7 +348,7 @@ class QueryScopeErrorTests(unittest.TestCase):
 
     def test_empty_manifest_raises_value_error(self):
         """Empty manifest with auto_fetch=False raises ValueError for any request (D-07/D-09)."""
-        from forexfactory import _query, _cache
+        from forexfactory import _cache, _query
 
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = Path(tmpdir) / "cache"
@@ -389,25 +394,30 @@ class QueryScopeErrorTests(unittest.TestCase):
 
             scrape_calls = []
 
-            with patch.object(_scrape, "scrape_month",
-                               side_effect=lambda s, p, **kw: scrape_calls.append(p) or []):
-                try:
-                    _query.run_query(
-                        currencies=["EUR"],
-                        impacts=["medium"],
-                        cache_dir=cache_dir,
-                        auto_fetch=False,
-                    )
-                except ValueError:
-                    pass
+            with (
+                patch.object(
+                    _scrape,
+                    "scrape_month",
+                    side_effect=lambda s, p, **kw: scrape_calls.append(p) or [],
+                ),
+                contextlib.suppress(ValueError),
+            ):
+                _query.run_query(
+                    currencies=["EUR"],
+                    impacts=["medium"],
+                    cache_dir=cache_dir,
+                    auto_fetch=False,
+                )
 
-            self.assertEqual(len(scrape_calls), 0,
-                             "auto_fetch=False must make zero network calls on scope miss")
+            self.assertEqual(
+                len(scrape_calls), 0, "auto_fetch=False must make zero network calls on scope miss"
+            )
 
 
 # ---------------------------------------------------------------------------
 # Phase-2 D-08/D-09: include_no_data filter tests
 # ---------------------------------------------------------------------------
+
 
 class QueryIncludeNoDataTests(unittest.TestCase):
     """D-08/D-09: include_no_data filter — speeches hidden by default, holidays visible."""
@@ -426,7 +436,7 @@ class QueryIncludeNoDataTests(unittest.TestCase):
         if scope is None:
             scope = {"currencies": ["USD"], "impacts": ["high", "holiday"]}
         manifest = {"scope": scope, "months": {}}
-        for (year, month), rows in zip(months, rows_per_month):
+        for (year, month), rows in zip(months, rows_per_month, strict=False):
             anchor = __import__("datetime").date(year, month, 1)
             p = _cache.month_parquet_path(cache_dir, anchor)
             _make_parquet(p, rows)
@@ -511,7 +521,7 @@ class QueryIncludeNoDataTests(unittest.TestCase):
             )
 
     def test_stale_cache_without_hasdatavalues_does_not_raise(self):
-        """Querying a pre-Phase-2 parquet lacking hasDataValues column does not raise (RESEARCH Pitfall 4)."""
+        """Query on pre-Phase-2 parquet lacking hasDataValues column does not raise."""
         from forexfactory import _query
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -555,6 +565,7 @@ class QueryIncludeNoDataTests(unittest.TestCase):
 # CACHE-05: auto_fetch / matured-month wiring tests
 # ---------------------------------------------------------------------------
 
+
 def _usd_high_data_row_with_actual(dt: str = "2026-05-01 08:30:00") -> dict:
     """USD/high data row with actual value — simulates a matured month re-fetch result."""
     return {
@@ -565,14 +576,13 @@ def _usd_high_data_row_with_actual(dt: str = "2026-05-01 08:30:00") -> dict:
         "id": "cpi-1",
         "leaked": False,
         "hasDataValues": True,
-        "actual": 0.045,   # 4.5% parsed float — non-NaN
+        "actual": 0.045,  # 4.5% parsed float — non-NaN
         "actual_raw": "4.5%",
     }
 
 
 def _usd_high_data_row_no_actual(dt: str = "2026-05-01 08:30:00") -> dict:
     """USD/high data row without actual — simulates a stale forecast-only cache entry."""
-    import math
     return {
         "datetime_utc": pd.Timestamp(dt, tz="UTC"),
         "currency": "USD",
@@ -599,26 +609,35 @@ class QueryAutoFetchTests(unittest.TestCase):
         p = _cache.month_parquet_path(cache_dir, anchor)
         _make_parquet(p, [_usd_high_data_row_no_actual()])
         # Write manifest with settled=False
-        _cache.write_manifest(cache_dir, {
-            "scope": {"currencies": ["USD"], "impacts": ["high", "holiday"]},
-            "months": {
-                "2026-05": {"scraped_at": "2026-01-01T00:00:00Z", "settled": False},
+        _cache.write_manifest(
+            cache_dir,
+            {
+                "scope": {"currencies": ["USD"], "impacts": ["high", "holiday"]},
+                "months": {
+                    "2026-05": {"scraped_at": "2026-01-01T00:00:00Z", "settled": False},
+                },
             },
-        })
+        )
 
     def _fresh_days(self):
         """Scrape fixture returning a day with an actual value."""
-        return [{"events": [{
-            "currency": "USD",
-            "impactName": "High Impact Expected",
-            "name": "CPI y/y",
-            "dateline": 1746057600,
-            "id": "cpi-1",
-            "leaked": False,
-            "hasDataValues": True,
-            "forecast": "4.3%",
-            "actual": "4.5%",
-        }]}]
+        return [
+            {
+                "events": [
+                    {
+                        "currency": "USD",
+                        "impactName": "High Impact Expected",
+                        "name": "CPI y/y",
+                        "dateline": 1746057600,
+                        "id": "cpi-1",
+                        "leaked": False,
+                        "hasDataValues": True,
+                        "forecast": "4.3%",
+                        "actual": "4.5%",
+                    }
+                ]
+            }
+        ]
 
     def test_query_auto_fetch_true_matures_month(self):
         """run_query(auto_fetch=True) re-fetches a matured settled:false month (SC2)."""
@@ -659,15 +678,16 @@ class QueryAutoFetchTests(unittest.TestCase):
                 return []
 
             with patch.object(_scrape, "scrape_month", side_effect=counting_scrape):
-                result_path = _query.run_query(
+                _query.run_query(
                     currencies=["USD"],
                     impacts=["high", "holiday"],
                     cache_dir=cache_dir,
                     auto_fetch=False,
                 )
 
-            self.assertEqual(len(mock_calls), 0,
-                             "auto_fetch=False must not trigger any scrape calls (D-09)")
+            self.assertEqual(
+                len(mock_calls), 0, "auto_fetch=False must not trigger any scrape calls (D-09)"
+            )
 
     def test_query_progress_callback_fired_for_matured(self):
         """run_query fires progress('matured', count=N) before re-fetching (D-11/D-12)."""
@@ -692,8 +712,11 @@ class QueryAutoFetchTests(unittest.TestCase):
                     progress=record_progress,
                 )
 
-            self.assertEqual(len(progress_calls), 1,
-                             "progress callback must be called exactly once for one matured month")
+            self.assertEqual(
+                len(progress_calls),
+                1,
+                "progress callback must be called exactly once for one matured month",
+            )
             event, kwargs = progress_calls[0]
             self.assertEqual(event, "matured")
             self.assertEqual(kwargs.get("count"), 1)
@@ -716,8 +739,7 @@ class QueryAutoFetchTests(unittest.TestCase):
                 progress=lambda e, **kw: progress_calls.append(e),
             )
 
-            self.assertEqual(len(progress_calls), 0,
-                             "progress must not fire when auto_fetch=False")
+            self.assertEqual(len(progress_calls), 0, "progress must not fire when auto_fetch=False")
 
     def test_get_auto_fetch_false_forwarded(self):
         """forexfactory.get(auto_fetch=False) forwards to run_query(auto_fetch=False) (D-07)."""
@@ -727,16 +749,20 @@ class QueryAutoFetchTests(unittest.TestCase):
             cache_dir = Path(tmpdir) / "cache"
             # Settled cache — no matured months; auto_fetch=False is a no-op here
             from forexfactory import _cache
+
             _cache.ensure_dirs(cache_dir)
             anchor = __import__("datetime").date(2026, 3, 1)
             p = _cache.month_parquet_path(cache_dir, anchor)
             _make_parquet(p, [_usd_high_data_row()])
-            _cache.write_manifest(cache_dir, {
-                "scope": {"currencies": ["USD"], "impacts": ["high", "holiday"]},
-                "months": {
-                    "2026-03": {"scraped_at": "2026-06-08T00:00:00Z", "settled": True},
+            _cache.write_manifest(
+                cache_dir,
+                {
+                    "scope": {"currencies": ["USD"], "impacts": ["high", "holiday"]},
+                    "months": {
+                        "2026-03": {"scraped_at": "2026-06-08T00:00:00Z", "settled": True},
+                    },
                 },
-            })
+            )
 
             # Should behave identically to get() with auto_fetch=True (settled cache)
             result = forexfactory.get(
@@ -753,41 +779,52 @@ class QueryAutoFetchTests(unittest.TestCase):
 # CACHE-03: scope-miss auto-widen tests (SC1 / D-05 / D-06 / D-07)
 # ---------------------------------------------------------------------------
 
+
 def _eur_medium_days():
     """Scrape fixture returning EUR/medium event data."""
-    return [{"events": [{
-        "currency": "EUR",
-        "impactName": "Medium Impact Expected",
-        "name": "ECB Rate Decision",
-        "dateline": 1746057600,
-        "id": "ecb-1",
-        "leaked": False,
-        "hasDataValues": True,
-    }]}]
+    return [
+        {
+            "events": [
+                {
+                    "currency": "EUR",
+                    "impactName": "Medium Impact Expected",
+                    "name": "ECB Rate Decision",
+                    "dateline": 1746057600,
+                    "id": "ecb-1",
+                    "leaked": False,
+                    "hasDataValues": True,
+                }
+            ]
+        }
+    ]
 
 
 def _mixed_days_with_eur_medium():
     """Scrape fixture returning both USD/high and EUR/medium events."""
-    return [{"events": [
+    return [
         {
-            "currency": "USD",
-            "impactName": "High Impact Expected",
-            "name": "CPI y/y",
-            "dateline": 1746057600,
-            "id": "cpi-1",
-            "leaked": False,
-            "hasDataValues": True,
-        },
-        {
-            "currency": "EUR",
-            "impactName": "Medium Impact Expected",
-            "name": "ECB Rate Decision",
-            "dateline": 1746057600,
-            "id": "ecb-1",
-            "leaked": False,
-            "hasDataValues": True,
-        },
-    ]}]
+            "events": [
+                {
+                    "currency": "USD",
+                    "impactName": "High Impact Expected",
+                    "name": "CPI y/y",
+                    "dateline": 1746057600,
+                    "id": "cpi-1",
+                    "leaked": False,
+                    "hasDataValues": True,
+                },
+                {
+                    "currency": "EUR",
+                    "impactName": "Medium Impact Expected",
+                    "name": "ECB Rate Decision",
+                    "dateline": 1746057600,
+                    "id": "ecb-1",
+                    "leaked": False,
+                    "hasDataValues": True,
+                },
+            ]
+        }
+    ]
 
 
 class QueryScopeMissAutoWidenTests(unittest.TestCase):
@@ -799,36 +836,47 @@ class QueryScopeMissAutoWidenTests(unittest.TestCase):
 
         _cache.ensure_dirs(cache_dir)
         anchor = date(2026, 5, 1)
-        usd_high_days = [{"events": [{
-            "currency": "USD",
-            "impactName": "High Impact Expected",
-            "name": "CPI y/y",
-            "dateline": 1746057600,
-            "id": "cpi-1",
-            "leaked": False,
-            "hasDataValues": True,
-        }]}]
+        usd_high_days = [
+            {
+                "events": [
+                    {
+                        "currency": "USD",
+                        "impactName": "High Impact Expected",
+                        "name": "CPI y/y",
+                        "dateline": 1746057600,
+                        "id": "cpi-1",
+                        "leaked": False,
+                        "hasDataValues": True,
+                    }
+                ]
+            }
+        ]
         _populate.build_month_parquet(
-            cache_dir, anchor, usd_high_days,
-            currencies=["USD"], impacts=["high", "holiday"],
+            cache_dir,
+            anchor,
+            usd_high_days,
+            currencies=["USD"],
+            impacts=["high", "holiday"],
         )
-        _cache.write_manifest(cache_dir, {
-            "scope": {"currencies": ["USD"], "impacts": ["high", "holiday"]},
-            "months": {
-                "2026-05": {"scraped_at": "2026-01-01T00:00:00Z", "settled": True},
+        _cache.write_manifest(
+            cache_dir,
+            {
+                "scope": {"currencies": ["USD"], "impacts": ["high", "holiday"]},
+                "months": {
+                    "2026-05": {"scraped_at": "2026-01-01T00:00:00Z", "settled": True},
+                },
             },
-        })
+        )
 
     def test_auto_widen_returns_rows_sc1(self):
-        """run_query(auto_fetch=True) on scope miss auto-widens and returns EUR/medium rows (SC1)."""
+        """run_query(auto_fetch=True) on scope miss auto-widens and returns EUR/medium rows."""
         from forexfactory import _query, _scrape
 
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = Path(tmpdir) / "cache"
             self._setup_usd_high_only_cache(cache_dir)
 
-            with patch.object(_scrape, "scrape_month",
-                               return_value=_mixed_days_with_eur_medium()):
+            with patch.object(_scrape, "scrape_month", return_value=_mixed_days_with_eur_medium()):
                 result_path = _query.run_query(
                     currencies=["EUR"],
                     impacts=["medium"],
@@ -854,8 +902,7 @@ class QueryScopeMissAutoWidenTests(unittest.TestCase):
             self._setup_usd_high_only_cache(cache_dir)
 
             # First call: auto-widen fires, scrape_month is called
-            with patch.object(_scrape, "scrape_month",
-                               return_value=_mixed_days_with_eur_medium()):
+            with patch.object(_scrape, "scrape_month", return_value=_mixed_days_with_eur_medium()):
                 _query.run_query(
                     currencies=["EUR"],
                     impacts=["medium"],
@@ -867,8 +914,9 @@ class QueryScopeMissAutoWidenTests(unittest.TestCase):
             # Second call: scope already widened; scrape_month must NOT be called
             scrape_calls = []
 
-            with patch.object(_scrape, "scrape_month",
-                               side_effect=lambda s, p, **kw: scrape_calls.append(p) or []):
+            with patch.object(
+                _scrape, "scrape_month", side_effect=lambda s, p, **kw: scrape_calls.append(p) or []
+            ):
                 result_path = _query.run_query(
                     currencies=["EUR"],
                     impacts=["medium"],
@@ -877,10 +925,10 @@ class QueryScopeMissAutoWidenTests(unittest.TestCase):
                     session=object(),
                 )
 
-            self.assertEqual(len(scrape_calls), 0,
-                             "repeat query must make zero network calls after permanent widen (D-05)")
-            self.assertTrue(result_path.exists(),
-                            "repeat query must still return EUR/medium rows")
+            self.assertEqual(
+                len(scrape_calls), 0, "repeat query must make zero network calls after widen (D-05)"
+            )
+            self.assertTrue(result_path.exists(), "repeat query must still return EUR/medium rows")
 
     def test_auto_widen_progress_fired_for_scope_miss(self):
         """run_query fires progress('scope_miss', currency, impact) before auto-widen (D-12)."""
@@ -895,8 +943,7 @@ class QueryScopeMissAutoWidenTests(unittest.TestCase):
             def record_progress(event, **kwargs):
                 progress_calls.append((event, kwargs))
 
-            with patch.object(_scrape, "scrape_month",
-                               return_value=_mixed_days_with_eur_medium()):
+            with patch.object(_scrape, "scrape_month", return_value=_mixed_days_with_eur_medium()):
                 _query.run_query(
                     currencies=["EUR"],
                     impacts=["medium"],
@@ -907,14 +954,17 @@ class QueryScopeMissAutoWidenTests(unittest.TestCase):
                 )
 
             scope_miss_calls = [(e, kw) for (e, kw) in progress_calls if e == "scope_miss"]
-            self.assertEqual(len(scope_miss_calls), 1,
-                             "progress callback must be called once for the EUR/medium miss")
+            self.assertEqual(
+                len(scope_miss_calls),
+                1,
+                "progress callback must be called once for the EUR/medium miss",
+            )
             _, kw = scope_miss_calls[0]
             self.assertEqual(kw.get("currency"), "EUR")
             self.assertEqual(kw.get("impact"), "medium")
 
     def test_auto_widen_failure_propagates_auto_fetch_error_d06(self):
-        """scope miss with scrape_month returning [] and auto_fetch=True raises AutoFetchError (D-06)."""
+        """Scope miss + scrape_month returning [] + auto_fetch=True raises AutoFetchError (D-06)."""
         from forexfactory import _query, _scrape
         from forexfactory._exceptions import AutoFetchError
 
@@ -922,16 +972,19 @@ class QueryScopeMissAutoWidenTests(unittest.TestCase):
             cache_dir = Path(tmpdir) / "cache"
             self._setup_usd_high_only_cache(cache_dir)
 
-            with patch.object(_scrape, "scrape_month", return_value=[]):
-                with self.assertRaises(AutoFetchError,
-                                       msg="failed auto-widen must raise AutoFetchError (D-06)"):
-                    _query.run_query(
-                        currencies=["EUR"],
-                        impacts=["medium"],
-                        cache_dir=cache_dir,
-                        auto_fetch=True,
-                        session=object(),
-                    )
+            with (
+                patch.object(_scrape, "scrape_month", return_value=[]),
+                self.assertRaises(
+                    AutoFetchError, msg="failed auto-widen must raise AutoFetchError (D-06)"
+                ),
+            ):
+                _query.run_query(
+                    currencies=["EUR"],
+                    impacts=["medium"],
+                    cache_dir=cache_dir,
+                    auto_fetch=True,
+                    session=object(),
+                )
 
 
 if __name__ == "__main__":

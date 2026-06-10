@@ -35,7 +35,10 @@ class ScrapeTests(unittest.TestCase):
     def test_build_month_pages_matches_forex_factory_month_tokens(self):
         pages = scraper.build_month_pages(date(2026, 1, 15), date(2026, 3, 1))
 
-        self.assertEqual([p.anchor for p in pages], [date(2026, 1, 1), date(2026, 2, 1), date(2026, 3, 1)])
+        self.assertEqual(
+            [p.anchor for p in pages],
+            [date(2026, 1, 1), date(2026, 2, 1), date(2026, 3, 1)],
+        )
         self.assertEqual(pages[0].url, "https://www.forexfactory.com/calendar?month=jan.2026")
         self.assertEqual(pages[2].url, "https://www.forexfactory.com/calendar?month=mar.2026")
 
@@ -59,7 +62,9 @@ class ScrapeTests(unittest.TestCase):
     def test_extract_days_from_bracket_assignment_with_unquoted_days_key(self):
         days = [{"events": [{"id": "event-1"}]}]
         html = f"""<script>
-        if (typeof window.calendarComponentStates === 'undefined') {{ window.calendarComponentStates = {{}} }}
+        if (typeof window.calendarComponentStates === 'undefined') {{
+          window.calendarComponentStates = {{}}
+        }}
         window.calendarComponentStates[1] = {{
           days: {json.dumps(days)},
           other: {{"ignored": true}}
@@ -94,7 +99,11 @@ class ScrapeTests(unittest.TestCase):
 
     def test_scrape_month_retries_then_returns_days(self):
         days = [{"events": [{"id": "event-1"}]}]
-        html = f'<script>window.calendarComponentStates = {{"month": {{"days": {json.dumps(days)}}}}};</script>'
+        days_json = json.dumps(days)
+        html = (
+            "<script>window.calendarComponentStates = "
+            f'{{"month": {{"days": {days_json}}}}};</script>'
+        )
         session = FakeSession([RuntimeError("temporary"), FakeResponse(html)])
         page = scraper.MonthPage(date(2026, 4, 1), "https://example.test/calendar?month=apr.2026")
 
@@ -131,13 +140,20 @@ class ScrapeTests(unittest.TestCase):
             return scraper.ScrapeResult(success_count=0, fail_count=0, skip_count=0)
 
         with patch.object(scraper, "run_scraper", side_effect=fake_run_scraper):
-            result = scraper.main([
-                "--start-date", "2026-03-01",
-                "--end-date", "2026-03-31",
-                "--out-dir", "out-test",
-                "--between-pages-delay", "1.25",
-                "--retry-delay", "0.5",
-            ])
+            result = scraper.main(
+                [
+                    "--start-date",
+                    "2026-03-01",
+                    "--end-date",
+                    "2026-03-31",
+                    "--out-dir",
+                    "out-test",
+                    "--between-pages-delay",
+                    "1.25",
+                    "--retry-delay",
+                    "0.5",
+                ]
+            )
 
         self.assertEqual(result, scraper.ScrapeResult(success_count=0, fail_count=0, skip_count=0))
         self.assertEqual(captured["out_dir"], "out-test")
@@ -148,16 +164,23 @@ class ScrapeTests(unittest.TestCase):
     def test_run_scraper_passes_retry_delay_to_scrape_month(self):
         pages = [scraper.MonthPage(date(2026, 2, 1), "https://example.test/feb")]
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with patch.object(scraper, "scrape_month", return_value=[{"events": []}]) as mock_scrape_month:
-                with patch.object(scraper.time, "sleep"):
-                    scraper.run_scraper(pages, out_dir=tmpdir, session=object(), retry_delay=0.75)
+        empty_days: list = [{"events": []}]
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            patch.object(scraper, "scrape_month", return_value=empty_days) as mock_scrape_month,
+            patch.object(scraper.time, "sleep"),
+        ):
+            scraper.run_scraper(pages, out_dir=tmpdir, session=object(), retry_delay=0.75)
 
         self.assertEqual(mock_scrape_month.call_args.kwargs["retry_delay"], 0.75)
 
     def test_run_scraper_skips_existing_files_and_writes_new_days(self):
         days = [{"events": [{"id": "event-1"}]}]
-        html = f'<script>window.calendarComponentStates = {{"month": {{"days": {json.dumps(days)}}}}};</script>'
+        days_json = json.dumps(days)
+        html = (
+            "<script>window.calendarComponentStates = "
+            f'{{"month": {{"days": {days_json}}}}};</script>'
+        )
         session = FakeSession([FakeResponse(html)])
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -190,8 +213,10 @@ class ScrapeTests(unittest.TestCase):
 
             self.assertEqual(result.fail_count, 1)
             self.assertEqual(result.success_count, 0)
-            self.assertFalse((out_dir / "days_2026_05.json").exists(),
-                             "no raw file must be written when scrape returns empty days")
+            self.assertFalse(
+                (out_dir / "days_2026_05.json").exists(),
+                "no raw file must be written when scrape returns empty days",
+            )
 
 
 class ExtractDaysFixtureTests(unittest.TestCase):
@@ -201,7 +226,7 @@ class ExtractDaysFixtureTests(unittest.TestCase):
         return (Path(__file__).parent / "fixtures" / name).read_text(encoding="utf-8")
 
     def test_form1_whole_object_assignment_rich_month(self):
-        """form1: = {...} form; unquoted keys + single-quoted strings parsed; data-bearing events returned."""
+        """form1: = {...} form; unquoted keys + single-quoted strings; data-bearing events."""
         html = self._fixture("form1_rich_month.html")
         days = scraper.extract_days(html)
         self.assertGreater(len(days), 0)
@@ -217,7 +242,7 @@ class ExtractDaysFixtureTests(unittest.TestCase):
         self.assertTrue(event.get("hasDataValues"))
 
     def test_form2_bracket_assignment_no_data(self):
-        """form2: [n]={...} bracket form; unquoted 'days:' key; speech events with hasDataValues False."""
+        """form2: [n]={...} bracket form; unquoted 'days:' key; speech events."""
         html = self._fixture("form2_bracket_no_data.html")
         days = scraper.extract_days(html)
         all_events = [e for day in days for e in day.get("events", [])]
@@ -236,7 +261,7 @@ class ExtractDaysFixtureTests(unittest.TestCase):
         self.assertEqual(total_events, 0)
 
     def test_multi_candidate_selects_best_days(self):
-        """multi_candidate: two state objects; _select_best_days picks the richest (most days+events)."""
+        """multi_candidate: two state objects; _select_best_days picks the richest."""
         html = self._fixture("multi_candidate.html")
         days = scraper.extract_days(html)
         total_events = sum(len(day.get("events", [])) for day in days)

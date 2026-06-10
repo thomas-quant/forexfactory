@@ -14,11 +14,12 @@ Usage:
     result = run_populate(cache_dir="/path/to/cache", raw_dir="out")
     # result == {"populated": N, "skipped": N, "empty": N}
 """
+
 import glob
 import json
 import logging
 import os
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -26,8 +27,8 @@ import pandas as pd
 from forexfactory import _cache, _pipeline
 
 # ====== CONFIG ======
-RAW_INPUT_DIR: str = "out"                    # legacy on-disk asset location (D-05 / SC2)
-DEFAULT_CURRENCIES: list[str] = ["USD"]       # D-04
+RAW_INPUT_DIR: str = "out"  # legacy on-disk asset location (D-05 / SC2)
+DEFAULT_CURRENCIES: list[str] = ["USD"]  # D-04
 DEFAULT_IMPACTS: list[str] = ["high", "holiday"]  # D-04
 # Nullable-int columns: cast after DataFrame construction to guarantee Int64 parquet
 # dtype even when some rows have None (T-02-02 / RESEARCH Pattern 4).
@@ -40,6 +41,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Per-month builder (D-01 / DATA-01)
 # ---------------------------------------------------------------------------
+
 
 def build_month_parquet(
     cache_dir: Path,
@@ -71,9 +73,7 @@ def build_month_parquet(
     # Speech-event filter intentionally absent — retained per D-09; query layer filters.
 
     # Build DataFrame with datetime_utc column (DATA-01 / Phase-2 wide schema)
-    df = pd.DataFrame(rows) if rows else pd.DataFrame(
-        columns=_pipeline.PHASE2_COLUMNS
-    )
+    df = pd.DataFrame(rows) if rows else pd.DataFrame(columns=_pipeline.PHASE2_COLUMNS)
     if rows and "date" in df.columns and "time_utc" in df.columns:
         # WR-02: use errors="coerce" so holiday-class events with null/empty
         # datelines become NaT instead of raising a ParserError mid-run.
@@ -109,6 +109,7 @@ def build_month_parquet(
 # ---------------------------------------------------------------------------
 # Main populate entry point
 # ---------------------------------------------------------------------------
+
 
 def run_populate(
     *,
@@ -174,6 +175,7 @@ def run_populate(
     # No stdout output here — D-11 reserves banners for the CLI query command.
     if auto_fetch and not force_refresh:
         from forexfactory import _refresh  # noqa: PLC0415 — lazy to avoid circular import
+
         _refresh.refresh_matured_months(resolved_cache, session=session)
 
     # CACHE-06 / D-01: force_refresh short-circuits the disk-ingest loop and
@@ -182,14 +184,11 @@ def run_populate(
     # silently narrowing previously-cached months' parquets.
     if force_refresh:
         from forexfactory import _refresh  # noqa: PLC0415 — lazy to avoid circular import
+
         manifest = _cache.read_manifest(resolved_cache)
         existing_scope = manifest.get("scope", {})
-        effective_currencies = sorted(
-            set(currencies) | set(existing_scope.get("currencies", []))
-        )
-        effective_impacts = sorted(
-            set(impacts) | set(existing_scope.get("impacts", []))
-        )
+        effective_currencies = sorted(set(currencies) | set(existing_scope.get("currencies", [])))
+        effective_impacts = sorted(set(impacts) | set(existing_scope.get("impacts", [])))
         # WR-01: When start/end are unset, derive the full range from cached manifest
         # months (min..max of months keys) so force-refresh re-scrapes the entire
         # cached span rather than collapsing to the current month via gap-fill.
@@ -219,7 +218,7 @@ def run_populate(
     for p in raw_paths:
         basename = os.path.basename(p)
         # filename: days_YYYY_MM.json
-        stem = basename[len("days_"):-len(".json")]  # "YYYY_MM"
+        stem = basename[len("days_") : -len(".json")]  # "YYYY_MM"
         try:
             year_str, month_str = stem.split("_")
             anchor = date(int(year_str), int(month_str), 1)
@@ -256,7 +255,7 @@ def run_populate(
 
         # Load raw JSON — warn-and-skip on bad JSON (T-01-01)
         try:
-            with open(raw_path, "r", encoding="utf-8") as fh:
+            with open(raw_path, encoding="utf-8") as fh:
                 days = json.load(fh)
             if not isinstance(days, list):
                 logger.warning("[%d/%d] bad structure in %s — skipping", i, total, raw_path)
@@ -290,9 +289,12 @@ def run_populate(
 
         # Record manifest entry (D-02 / CACHE-04)
         # settled = whole month is strictly before today
-        settled = (date(anchor.year, anchor.month + 1, 1) if anchor.month < 12
-                   else date(anchor.year + 1, 1, 1)) <= today
-        scraped_at = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        settled = (
+            date(anchor.year, anchor.month + 1, 1)
+            if anchor.month < 12
+            else date(anchor.year + 1, 1, 1)
+        ) <= today
+        scraped_at = datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         manifest = _cache.update_manifest_month(
             resolved_cache,
             anchor,
@@ -307,7 +309,9 @@ def run_populate(
 
     logger.info(
         "[populate] done — populated=%d skipped=%d empty=%d",
-        populated_count, skipped_count, empty_count,
+        populated_count,
+        skipped_count,
+        empty_count,
     )
 
     # Stamp schema_version after any successful activity so callers can detect
@@ -323,6 +327,7 @@ def run_populate(
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 def _parse_month_str(s: str) -> date:
     """Parse a 'YYYY-MM' string into a date(year, month, 1)."""

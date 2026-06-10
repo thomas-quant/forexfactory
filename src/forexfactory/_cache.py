@@ -12,6 +12,8 @@ Usage:
     _cache.ensure_dirs(cache_dir)
     manifest = _cache.read_manifest(cache_dir)
 """
+
+import contextlib
 import json
 import logging
 import os
@@ -33,6 +35,7 @@ logger = logging.getLogger(__name__)
 # Cache-dir resolution (CACHE-01)
 # ---------------------------------------------------------------------------
 
+
 def resolve_cache_dir(cache_dir: Path | None = None) -> Path:
     """Return the cache directory as a Path.
 
@@ -50,6 +53,7 @@ def resolve_cache_dir(cache_dir: Path | None = None) -> Path:
 # ---------------------------------------------------------------------------
 # Sub-directory and file path helpers
 # ---------------------------------------------------------------------------
+
 
 def raw_dir(cache_dir: Path) -> Path:
     """Return the raw JSON staging directory (D-03)."""
@@ -80,6 +84,7 @@ def manifest_path(cache_dir: Path) -> Path:
 # Directory creation
 # ---------------------------------------------------------------------------
 
+
 def ensure_dirs(cache_dir: Path) -> None:
     """Create cache_dir, raw/, and queries/ with exist_ok=True."""
     os.makedirs(cache_dir, exist_ok=True)
@@ -91,11 +96,12 @@ def ensure_dirs(cache_dir: Path) -> None:
 # Manifest read / write (D-02)
 # ---------------------------------------------------------------------------
 
+
 def read_manifest(cache_dir: Path) -> dict[str, Any]:
     """Load manifest.json; return {} if missing or invalid JSON (warn-and-skip pattern)."""
     path = manifest_path(cache_dir)
     try:
-        with open(path, "r", encoding="utf-8") as fh:
+        with open(path, encoding="utf-8") as fh:
             return json.load(fh)
     except FileNotFoundError:
         return {}
@@ -116,16 +122,15 @@ def write_manifest(cache_dir: Path, manifest: dict[str, Any]) -> None:
         os.replace(tmp_path, path)
     except Exception:
         # Clean up the temp file if rename failed.
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(tmp_path)
-        except OSError:
-            pass
         raise
 
 
 # ---------------------------------------------------------------------------
 # Manifest helpers (D-02 scope + provenance)
 # ---------------------------------------------------------------------------
+
 
 def update_manifest_month(
     cache_dir: Path,
@@ -145,12 +150,8 @@ def update_manifest_month(
     manifest = read_manifest(cache_dir)
     # WR-01: union-merge so multiple populate batches accumulate coverage.
     existing_scope = manifest.get("scope", {})
-    merged_currencies = sorted(
-        set(existing_scope.get("currencies", [])) | set(currencies)
-    )
-    merged_impacts = sorted(
-        set(existing_scope.get("impacts", [])) | set(impacts)
-    )
+    merged_currencies = sorted(set(existing_scope.get("currencies", [])) | set(currencies))
+    merged_impacts = sorted(set(existing_scope.get("impacts", [])) | set(impacts))
     manifest["scope"] = {
         "currencies": merged_currencies,
         "impacts": merged_impacts,

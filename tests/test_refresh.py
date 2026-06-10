@@ -3,6 +3,7 @@ Tests for forexfactory._refresh.run_refresh.
 
 All tests use injected FakeSession / FakeResponse — no live HTTP requests.
 """
+
 import json
 import tempfile
 import unittest
@@ -38,11 +39,10 @@ class FakeSession:
 
 
 class RefreshTests(unittest.TestCase):
-
     def _make_html(self, days):
         """Build minimal HTML with calendarComponentStates for FakeSession."""
         return (
-            '<script>window.calendarComponentStates = '
+            "<script>window.calendarComponentStates = "
             f'{{"month": {{"days": {json.dumps(days)}}}}};</script>'
         )
 
@@ -53,7 +53,8 @@ class RefreshTests(unittest.TestCase):
 
             with patch.object(_scrape, "scrape_month", return_value=[]):
                 result = run_refresh(
-                    start="2026-05", end="2026-05",
+                    start="2026-05",
+                    end="2026-05",
                     cache_dir=cache_dir,
                     session=object(),
                     between_pages_delay=0.0,
@@ -61,12 +62,14 @@ class RefreshTests(unittest.TestCase):
                 )
 
             raw_file = _cache.raw_json_path(cache_dir, date(2026, 5, 1))
-            self.assertFalse(raw_file.exists(),
-                             "no raw file must be written for an empty scrape")
+            self.assertFalse(raw_file.exists(), "no raw file must be written for an empty scrape")
 
             manifest = _cache.read_manifest(cache_dir)
-            self.assertNotIn("2026-05", manifest.get("months", {}),
-                             "manifest must not record an entry for a failed scrape")
+            self.assertNotIn(
+                "2026-05",
+                manifest.get("months", {}),
+                "manifest must not record an entry for a failed scrape",
+            )
 
             self.assertEqual(result["failed"], 1)
             self.assertEqual(result["fetched"], 0)
@@ -74,8 +77,19 @@ class RefreshTests(unittest.TestCase):
 
     def test_existing_nonempty_raw_month_is_skipped_without_network_call(self):
         """D-11: month with an existing non-empty raw JSON is not re-scraped."""
-        days = [{"events": [{"currency": "USD", "impactName": "high",
-                              "name": "CPI y/y", "dateline": 1772368200, "id": "cpi-1"}]}]
+        days = [
+            {
+                "events": [
+                    {
+                        "currency": "USD",
+                        "impactName": "high",
+                        "name": "CPI y/y",
+                        "dateline": 1772368200,
+                        "id": "cpi-1",
+                    }
+                ]
+            }
+        ]
 
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = Path(tmpdir)
@@ -88,23 +102,38 @@ class RefreshTests(unittest.TestCase):
             fake_session = FakeSession([])  # no responses — must not be called
 
             result = run_refresh(
-                start="2026-05", end="2026-05",
+                start="2026-05",
+                end="2026-05",
                 cache_dir=cache_dir,
                 session=fake_session,
                 between_pages_delay=0.0,
                 retry_delay=0.0,
             )
 
-            self.assertEqual(len(fake_session.calls), 0,
-                             "session.get must not be called for an already-cached month")
+            self.assertEqual(
+                len(fake_session.calls),
+                0,
+                "session.get must not be called for an already-cached month",
+            )
             self.assertEqual(result["skipped"], 1)
             self.assertEqual(result["fetched"], 0)
             self.assertEqual(result["failed"], 0)
 
     def test_fresh_month_scraped_staged_parquet_built_and_manifest_recorded(self):
         """Fresh month: scraped, raw JSON staged, parquet built, manifest updated."""
-        days = [{"events": [{"currency": "USD", "impactName": "high",
-                              "name": "CPI y/y", "dateline": 1772368200, "id": "cpi-1"}]}]
+        days = [
+            {
+                "events": [
+                    {
+                        "currency": "USD",
+                        "impactName": "high",
+                        "name": "CPI y/y",
+                        "dateline": 1772368200,
+                        "id": "cpi-1",
+                    }
+                ]
+            }
+        ]
         html = self._make_html(days)
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -113,7 +142,8 @@ class RefreshTests(unittest.TestCase):
             fake_session = FakeSession([FakeResponse(html)])
 
             result = run_refresh(
-                start="2026-05", end="2026-05",
+                start="2026-05",
+                end="2026-05",
                 cache_dir=cache_dir,
                 session=fake_session,
                 currencies=["USD"],
@@ -132,8 +162,9 @@ class RefreshTests(unittest.TestCase):
 
             # Manifest records the month entry (D-02)
             manifest = _cache.read_manifest(cache_dir)
-            self.assertIn("2026-05", manifest.get("months", {}),
-                          "manifest must record the fetched month")
+            self.assertIn(
+                "2026-05", manifest.get("months", {}), "manifest must record the fetched month"
+            )
 
             self.assertEqual(result["fetched"], 1)
             self.assertEqual(result["skipped"], 0)
@@ -145,14 +176,25 @@ class RefreshForceRefreshTests(unittest.TestCase):
 
     def _make_html(self, days):
         return (
-            '<script>window.calendarComponentStates = '
+            "<script>window.calendarComponentStates = "
             f'{{"month": {{"days": {json.dumps(days)}}}}};</script>'
         )
 
     def test_force_refresh_true_rescrapes_cached_month(self):
         """force_refresh=True re-scrapes a month that already has non-empty raw JSON."""
-        days = [{"events": [{"currency": "USD", "impactName": "high",
-                              "name": "CPI y/y", "dateline": 1772368200, "id": "cpi-1"}]}]
+        days = [
+            {
+                "events": [
+                    {
+                        "currency": "USD",
+                        "impactName": "high",
+                        "name": "CPI y/y",
+                        "dateline": 1772368200,
+                        "id": "cpi-1",
+                    }
+                ]
+            }
+        ]
         html = self._make_html(days)
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -166,7 +208,8 @@ class RefreshForceRefreshTests(unittest.TestCase):
             fake_session = FakeSession([FakeResponse(html)])
 
             result = run_refresh(
-                start="2026-05", end="2026-05",
+                start="2026-05",
+                end="2026-05",
                 cache_dir=cache_dir,
                 session=fake_session,
                 currencies=["USD"],
@@ -177,7 +220,8 @@ class RefreshForceRefreshTests(unittest.TestCase):
             )
 
             self.assertEqual(
-                len(fake_session.calls), 1,
+                len(fake_session.calls),
+                1,
                 "session.get must be called once when force_refresh=True",
             )
             self.assertEqual(result["fetched"], 1)
@@ -191,29 +235,34 @@ class RefreshForceRefreshTests(unittest.TestCase):
         The rebuilt parquet must still contain USD rows because the scope was unioned.
         """
         import pandas as pd
-        from forexfactory import _populate, _cache
+
+        from forexfactory import _cache, _populate
 
         # Days containing both USD (existing scope) and EUR (new request) events.
-        mixed_days = [{"events": [
+        mixed_days = [
             {
-                "currency": "USD",
-                "impactName": "High Impact Expected",
-                "name": "CPI y/y",
-                "dateline": 1772368200,
-                "id": "cpi-1",
-                "leaked": False,
-                "hasDataValues": True,
-            },
-            {
-                "currency": "EUR",
-                "impactName": "High Impact Expected",
-                "name": "ECB Rate Decision",
-                "dateline": 1772368200,
-                "id": "ecb-1",
-                "leaked": False,
-                "hasDataValues": True,
-            },
-        ]}]
+                "events": [
+                    {
+                        "currency": "USD",
+                        "impactName": "High Impact Expected",
+                        "name": "CPI y/y",
+                        "dateline": 1772368200,
+                        "id": "cpi-1",
+                        "leaked": False,
+                        "hasDataValues": True,
+                    },
+                    {
+                        "currency": "EUR",
+                        "impactName": "High Impact Expected",
+                        "name": "ECB Rate Decision",
+                        "dateline": 1772368200,
+                        "id": "ecb-1",
+                        "leaked": False,
+                        "hasDataValues": True,
+                    },
+                ]
+            }
+        ]
         html = self._make_html(mixed_days)
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -222,21 +271,31 @@ class RefreshForceRefreshTests(unittest.TestCase):
 
             # Seed: build a USD/high+holiday parquet and manifest entry.
             anchor = date(2026, 5, 1)
-            usd_days = [{"events": [{
-                "currency": "USD",
-                "impactName": "High Impact Expected",
-                "name": "CPI y/y",
-                "dateline": 1772368200,
-                "id": "cpi-1",
-                "leaked": False,
-                "hasDataValues": True,
-            }]}]
+            usd_days = [
+                {
+                    "events": [
+                        {
+                            "currency": "USD",
+                            "impactName": "High Impact Expected",
+                            "name": "CPI y/y",
+                            "dateline": 1772368200,
+                            "id": "cpi-1",
+                            "leaked": False,
+                            "hasDataValues": True,
+                        }
+                    ]
+                }
+            ]
             _populate.build_month_parquet(
-                cache_dir, anchor, usd_days,
-                currencies=["USD"], impacts=["high", "holiday"],
+                cache_dir,
+                anchor,
+                usd_days,
+                currencies=["USD"],
+                impacts=["high", "holiday"],
             )
             _cache.update_manifest_month(
-                cache_dir, anchor,
+                cache_dir,
+                anchor,
                 scraped_at="2026-01-01T00:00:00Z",
                 settled=True,
                 currencies=["USD"],
@@ -264,14 +323,26 @@ class RefreshForceRefreshTests(unittest.TestCase):
             df = pd.read_parquet(parquet_path)
             usd_rows = df[df["currency"] == "USD"]
             self.assertGreater(
-                len(usd_rows), 0,
+                len(usd_rows),
+                0,
                 "CR-01: USD rows must survive a force-refresh requested at EUR-only scope",
             )
 
     def test_force_refresh_false_preserves_skip_behavior(self):
-        """force_refresh=False (explicit) skips a month with non-empty raw JSON — regression guard."""
-        days = [{"events": [{"currency": "USD", "impactName": "high",
-                              "name": "CPI y/y", "dateline": 1772368200, "id": "cpi-1"}]}]
+        """force_refresh=False (explicit) skips a month with non-empty raw JSON."""
+        days = [
+            {
+                "events": [
+                    {
+                        "currency": "USD",
+                        "impactName": "high",
+                        "name": "CPI y/y",
+                        "dateline": 1772368200,
+                        "id": "cpi-1",
+                    }
+                ]
+            }
+        ]
 
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = Path(tmpdir)
@@ -283,7 +354,8 @@ class RefreshForceRefreshTests(unittest.TestCase):
             fake_session = FakeSession([])  # no responses — must not be called
 
             result = run_refresh(
-                start="2026-05", end="2026-05",
+                start="2026-05",
+                end="2026-05",
                 cache_dir=cache_dir,
                 session=fake_session,
                 between_pages_delay=0.0,
@@ -292,7 +364,8 @@ class RefreshForceRefreshTests(unittest.TestCase):
             )
 
             self.assertEqual(
-                len(fake_session.calls), 0,
+                len(fake_session.calls),
+                0,
                 "session.get must not be called when force_refresh=False",
             )
             self.assertEqual(result["skipped"], 1)
@@ -306,20 +379,30 @@ class RefreshMaturedMonthsTests(unittest.TestCase):
     def _make_stale_parquet(self, cache_dir: Path, anchor: date) -> None:
         """Write a stale parquet with no actual value for the given month anchor."""
         from forexfactory import _populate
-        stale_days = [{"events": [{
-            "currency": "USD",
-            "impactName": "High Impact Expected",
-            "name": "CPI y/y",
-            "dateline": 1746057600,
-            "id": "cpi-1",
-            "leaked": False,
-            "hasDataValues": True,
-            "forecast": "4.3%",
-            # no "actual" — stale forecast-only
-        }]}]
+
+        stale_days = [
+            {
+                "events": [
+                    {
+                        "currency": "USD",
+                        "impactName": "High Impact Expected",
+                        "name": "CPI y/y",
+                        "dateline": 1746057600,
+                        "id": "cpi-1",
+                        "leaked": False,
+                        "hasDataValues": True,
+                        "forecast": "4.3%",
+                        # no "actual" — stale forecast-only
+                    }
+                ]
+            }
+        ]
         _populate.build_month_parquet(
-            cache_dir, anchor, stale_days,
-            currencies=["USD"], impacts=["high", "holiday"],
+            cache_dir,
+            anchor,
+            stale_days,
+            currencies=["USD"],
+            impacts=["high", "holiday"],
         )
 
     def _seed_manifest(self, cache_dir: Path, months_settled: dict) -> None:
@@ -336,21 +419,28 @@ class RefreshMaturedMonthsTests(unittest.TestCase):
     def test_matured_month_is_refetched_and_parquet_updated(self):
         """CACHE-05 / SC2: settled:false past month re-fetched; rebuilt parquet has actuals."""
         import pandas as pd
-        from forexfactory import _populate, _scrape
+
+        from forexfactory import _scrape
         from forexfactory._refresh import refresh_matured_months
 
         anchor = date(2026, 5, 1)  # May 2026 — fully in the past (today 2026-06-09)
-        fresh_days = [{"events": [{
-            "currency": "USD",
-            "impactName": "High Impact Expected",
-            "name": "CPI y/y",
-            "dateline": 1746057600,
-            "id": "cpi-1",
-            "leaked": False,
-            "hasDataValues": True,
-            "forecast": "4.3%",
-            "actual": "4.5%",
-        }]}]
+        fresh_days = [
+            {
+                "events": [
+                    {
+                        "currency": "USD",
+                        "impactName": "High Impact Expected",
+                        "name": "CPI y/y",
+                        "dateline": 1746057600,
+                        "id": "cpi-1",
+                        "leaked": False,
+                        "hasDataValues": True,
+                        "forecast": "4.3%",
+                        "actual": "4.5%",
+                    }
+                ]
+            }
+        ]
 
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = Path(tmpdir)
@@ -395,14 +485,13 @@ class RefreshMaturedMonthsTests(unittest.TestCase):
                 retry_delay=0.0,
             )
 
-            self.assertEqual(len(fake_session.calls), 0,
-                             "no network calls when no matured months")
+            self.assertEqual(len(fake_session.calls), 0, "no network calls when no matured months")
             self.assertEqual(result["matured"], 0)
             self.assertEqual(result["refreshed"], 0)
             self.assertEqual(result["failed"], 0)
 
     def test_failed_refetch_serves_stale_parquet_and_warns(self):
-        """CACHE-05 / D-10: failed re-fetch leaves stale parquet, emits one warning, never raises."""
+        """CACHE-05 / D-10: failed re-fetch leaves stale parquet and warns; never raises."""
         from forexfactory import _scrape
         from forexfactory._refresh import refresh_matured_months
 
@@ -418,25 +507,32 @@ class RefreshMaturedMonthsTests(unittest.TestCase):
             mtime_before = parquet_path.stat().st_mtime
 
             # scrape_month returns [] → run_refresh reports failed=1 (D-10)
-            with patch.object(_scrape, "scrape_month", return_value=[]):
-                with self.assertLogs(level="WARNING") as log_cm:
-                    result = refresh_matured_months(
-                        cache_dir,
-                        session=object(),
-                        between_pages_delay=0.0,
-                        retry_delay=0.0,
-                    )
+            with (
+                patch.object(_scrape, "scrape_month", return_value=[]),
+                self.assertLogs(level="WARNING") as log_cm,
+            ):
+                result = refresh_matured_months(
+                    cache_dir,
+                    session=object(),
+                    between_pages_delay=0.0,
+                    retry_delay=0.0,
+                )
 
             # Stale parquet must still exist unchanged
-            self.assertTrue(parquet_path.exists(),
-                            "stale parquet must survive failed re-fetch (D-10)")
-            self.assertEqual(parquet_path.stat().st_mtime, mtime_before,
-                             "stale parquet mtime must not change on failed re-fetch")
+            self.assertTrue(
+                parquet_path.exists(), "stale parquet must survive failed re-fetch (D-10)"
+            )
+            self.assertEqual(
+                parquet_path.stat().st_mtime,
+                mtime_before,
+                "stale parquet mtime must not change on failed re-fetch",
+            )
 
             # Exactly one [matured] warning from refresh_matured_months (D-10)
             matured_warnings = [m for m in log_cm.output if "[matured]" in m]
-            self.assertEqual(len(matured_warnings), 1,
-                             "exactly one [matured] re-fetch warning must be emitted")
+            self.assertEqual(
+                len(matured_warnings), 1, "exactly one [matured] re-fetch warning must be emitted"
+            )
 
             self.assertEqual(result["failed"], 1)
             self.assertEqual(result["refreshed"], 0)
@@ -444,7 +540,6 @@ class RefreshMaturedMonthsTests(unittest.TestCase):
 
 
 class RefreshCliRoutingTests(unittest.TestCase):
-
     def test_cli_refresh_dispatches_to_run_refresh_with_append_currencies(self):
         """refresh subcommand routes to _refresh.run_refresh with D-12 append args."""
         from forexfactory import _refresh
@@ -473,20 +568,32 @@ class RefreshCliRoutingTests(unittest.TestCase):
             return {"fetched": 0, "skipped": 0, "failed": 0}
 
         with patch.object(_refresh, "run_refresh", side_effect=fake_run_refresh):
-            exit_code = cli_main([
-                "refresh",
-                "--currency", "USD",
-                "--currency", "EUR",
-                "--impact", "high",
-                "--start", "2026-04",
-                "--end", "2026-05",
-                "--between-pages-delay", "2.0",
-                "--retry-delay", "1.5",
-            ])
+            exit_code = cli_main(
+                [
+                    "refresh",
+                    "--currency",
+                    "USD",
+                    "--currency",
+                    "EUR",
+                    "--impact",
+                    "high",
+                    "--start",
+                    "2026-04",
+                    "--end",
+                    "2026-05",
+                    "--between-pages-delay",
+                    "2.0",
+                    "--retry-delay",
+                    "1.5",
+                ]
+            )
 
         self.assertEqual(exit_code, 0)
-        self.assertEqual(captured["currencies"], ["USD", "EUR"],
-                         "--currency should collect into a list (D-12 append action)")
+        self.assertEqual(
+            captured["currencies"],
+            ["USD", "EUR"],
+            "--currency should collect into a list (D-12 append action)",
+        )
         self.assertEqual(captured["impacts"], ["high"])
         self.assertEqual(captured["start"], "2026-04")
         self.assertEqual(captured["end"], "2026-05")
@@ -500,66 +607,84 @@ class RefreshWidenScopeTests(unittest.TestCase):
     # ── test data helpers ───────────────────────────────────────────────────
 
     def _usd_high_days(self):
-        return [{"events": [{
-            "currency": "USD",
-            "impactName": "High Impact Expected",
-            "name": "CPI y/y",
-            "dateline": 1746057600,
-            "id": "cpi-1",
-            "leaked": False,
-            "hasDataValues": True,
-        }]}]
+        return [
+            {
+                "events": [
+                    {
+                        "currency": "USD",
+                        "impactName": "High Impact Expected",
+                        "name": "CPI y/y",
+                        "dateline": 1746057600,
+                        "id": "cpi-1",
+                        "leaked": False,
+                        "hasDataValues": True,
+                    }
+                ]
+            }
+        ]
 
     def _eur_medium_days(self):
-        return [{"events": [{
-            "currency": "EUR",
-            "impactName": "Medium Impact Expected",
-            "name": "ECB Rate Decision",
-            "dateline": 1746057600,
-            "id": "ecb-1",
-            "leaked": False,
-            "hasDataValues": True,
-        }]}]
+        return [
+            {
+                "events": [
+                    {
+                        "currency": "EUR",
+                        "impactName": "Medium Impact Expected",
+                        "name": "ECB Rate Decision",
+                        "dateline": 1746057600,
+                        "id": "ecb-1",
+                        "leaked": False,
+                        "hasDataValues": True,
+                    }
+                ]
+            }
+        ]
 
     def _mixed_days(self):
         """Days containing both USD/high and EUR/medium events."""
-        return [{"events": [
+        return [
             {
-                "currency": "USD",
-                "impactName": "High Impact Expected",
-                "name": "CPI y/y",
-                "dateline": 1746057600,
-                "id": "cpi-1",
-                "leaked": False,
-                "hasDataValues": True,
-            },
-            {
-                "currency": "EUR",
-                "impactName": "Medium Impact Expected",
-                "name": "ECB Rate Decision",
-                "dateline": 1746057600,
-                "id": "ecb-1",
-                "leaked": False,
-                "hasDataValues": True,
-            },
-        ]}]
+                "events": [
+                    {
+                        "currency": "USD",
+                        "impactName": "High Impact Expected",
+                        "name": "CPI y/y",
+                        "dateline": 1746057600,
+                        "id": "cpi-1",
+                        "leaked": False,
+                        "hasDataValues": True,
+                    },
+                    {
+                        "currency": "EUR",
+                        "impactName": "Medium Impact Expected",
+                        "name": "ECB Rate Decision",
+                        "dateline": 1746057600,
+                        "id": "ecb-1",
+                        "leaked": False,
+                        "hasDataValues": True,
+                    },
+                ]
+            }
+        ]
 
     def _seed_cache(self, cache_dir: Path, months_dict: dict, scope: dict) -> None:
         """Write manifest + per-month parquets under cache_dir."""
         from forexfactory import _populate
+
         _cache.ensure_dirs(cache_dir)
         manifest = {
             "scope": scope,
             "months": {
-                k: {"scraped_at": "2026-01-01T00:00:00Z", "settled": True}
-                for k in months_dict
+                k: {"scraped_at": "2026-01-01T00:00:00Z", "settled": True} for k in months_dict
             },
         }
         for month_key, days in months_dict.items():
             year_str, month_str = month_key.split("-")
             anchor = date(int(year_str), int(month_str), 1)
             _populate.build_month_parquet(
-                cache_dir, anchor, days,
+                cache_dir,
+                anchor,
+                days,
                 currencies=scope.get("currencies", ["USD"]),
                 impacts=scope.get("impacts", ["high", "holiday"]),
             )
@@ -568,11 +693,12 @@ class RefreshWidenScopeTests(unittest.TestCase):
     # ── tests ───────────────────────────────────────────────────────────────
 
     def test_widen_scope_succeeds_and_unions_scope(self):
-        """widen_scope_to_cover returns without raising and permanently unions the manifest scope."""
+        """widen_scope_to_cover returns without raising and unions the manifest scope."""
         import pandas as pd
+
         from forexfactory import _scrape
-        from forexfactory._refresh import widen_scope_to_cover
         from forexfactory._exceptions import AutoFetchError  # noqa: F401 — must import
+        from forexfactory._refresh import widen_scope_to_cover
 
         initial_scope = {"currencies": ["USD"], "impacts": ["high", "holiday"]}
 
@@ -593,14 +719,22 @@ class RefreshWidenScopeTests(unittest.TestCase):
 
             manifest = _cache.read_manifest(cache_dir)
             scope = manifest.get("scope", {})
-            self.assertIn("EUR", scope.get("currencies", []),
-                          "manifest scope must include EUR after widen")
-            self.assertIn("USD", scope.get("currencies", []),
-                          "manifest scope must still include USD after widen")
-            self.assertIn("medium", scope.get("impacts", []),
-                          "manifest scope must include medium after widen")
-            self.assertIn("high", scope.get("impacts", []),
-                          "manifest scope must still include high after widen")
+            self.assertIn(
+                "EUR", scope.get("currencies", []), "manifest scope must include EUR after widen"
+            )
+            self.assertIn(
+                "USD",
+                scope.get("currencies", []),
+                "manifest scope must still include USD after widen",
+            )
+            self.assertIn(
+                "medium", scope.get("impacts", []), "manifest scope must include medium after widen"
+            )
+            self.assertIn(
+                "high",
+                scope.get("impacts", []),
+                "manifest scope must still include high after widen",
+            )
 
             # Month parquet must contain EUR/medium rows after widen
             anchor = date(2026, 5, 1)
@@ -644,19 +778,26 @@ class RefreshWidenScopeTests(unittest.TestCase):
                 )
 
             self.assertEqual(
-                len(scrape_calls), 2,
-                f"widen_scope_to_cover must fetch ALL cached months (D-05), got {len(scrape_calls)}",
+                len(scrape_calls),
+                2,
+                f"widen_scope_to_cover must fetch all cached months, got {len(scrape_calls)}",
             )
-            self.assertIn(date(2026, 4, 1), scrape_calls,
-                          "2026-04 must be fetched as part of the full cached range (D-05)")
-            self.assertIn(date(2026, 5, 1), scrape_calls,
-                          "2026-05 must be fetched as part of the full cached range (D-05)")
+            self.assertIn(
+                date(2026, 4, 1),
+                scrape_calls,
+                "2026-04 must be fetched as part of the full cached range (D-05)",
+            )
+            self.assertIn(
+                date(2026, 5, 1),
+                scrape_calls,
+                "2026-05 must be fetched as part of the full cached range (D-05)",
+            )
 
     def test_widen_scope_failure_raises_auto_fetch_error(self):
         """Failed widen raises AutoFetchError (D-06); manifest scope is unchanged."""
         from forexfactory import _scrape
-        from forexfactory._refresh import widen_scope_to_cover
         from forexfactory._exceptions import AutoFetchError
+        from forexfactory._refresh import widen_scope_to_cover
 
         initial_scope = {"currencies": ["USD"], "impacts": ["high", "holiday"]}
 
@@ -666,17 +807,21 @@ class RefreshWidenScopeTests(unittest.TestCase):
             original_scope = _cache.read_manifest(cache_dir).get("scope", {})
 
             # scrape_month returns [] → no days fetched → scope never widens
-            with patch.object(_scrape, "scrape_month", return_value=[]):
-                with self.assertRaises(AutoFetchError,
-                                       msg="widen_scope_to_cover must raise AutoFetchError when widen fails (D-06)"):
-                    widen_scope_to_cover(
-                        cache_dir,
-                        ["EUR"],
-                        ["medium"],
-                        session=object(),
-                        between_pages_delay=0.0,
-                        retry_delay=0.0,
-                    )
+            with (
+                patch.object(_scrape, "scrape_month", return_value=[]),
+                self.assertRaises(
+                    AutoFetchError,
+                    msg="widen_scope_to_cover must raise AutoFetchError when widen fails (D-06)",
+                ),
+            ):
+                widen_scope_to_cover(
+                    cache_dir,
+                    ["EUR"],
+                    ["medium"],
+                    session=object(),
+                    between_pages_delay=0.0,
+                    retry_delay=0.0,
+                )
 
             # Manifest scope must be unchanged (D-06: no partial data)
             manifest = _cache.read_manifest(cache_dir)

@@ -10,33 +10,47 @@ Usage:
   python pipeline.py --step parquet     # CSV -> Parquet
 """
 
+import argparse
+import csv
+import glob
+import json
 import os
 import re
-import json
-import glob
-import csv
-import argparse
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pandas as pd
 
 # ========= CONFIG =========
-IN_DIR = "out"                              # where days_YYYY_MM.json live
-PARSED_CSV = "ff_usd_high_holiday.csv"      # output from parse step
-CLEAN_CSV = "ff_usd_high_holiday_clean.csv" # output from sanitize step
-OUT_PARQUET = "economic_events.parquet"     # final parquet output
-KEEP_CURRENCIES = {"USD"}                   # only USD
-KEEP_IMPACTS = {"high", "holiday"}          # red folder + bank holidays
+IN_DIR = "out"  # where days_YYYY_MM.json live
+PARSED_CSV = "ff_usd_high_holiday.csv"  # output from parse step
+CLEAN_CSV = "ff_usd_high_holiday_clean.csv"  # output from sanitize step
+OUT_PARQUET = "economic_events.parquet"  # final parquet output
+KEEP_CURRENCIES = {"USD"}  # only USD
+KEEP_IMPACTS = {"high", "holiday"}  # red folder + bank holidays
 PARQUET_COMPRESSION = "zstd"
 PARQUET_COMPRESSION_LEVEL = 3
 # Phase-2 full analytical schema — final parquet column order (D-01, DATA-02/03/04).
 # Imported by _populate.py and _query.py to prevent stale-column-list drift (RESEARCH Pitfall 3).
 PHASE2_COLUMNS: list[str] = [
-    "datetime_utc", "currency", "impact", "title", "id", "leaked",
-    "forecast_raw", "actual_raw", "previous_raw", "revision_raw",
-    "forecast", "actual", "previous", "revision",
-    "actualBetterWorse", "revisionBetterWorse",
-    "ebaseId", "country", "hasDataValues",
+    "datetime_utc",
+    "currency",
+    "impact",
+    "title",
+    "id",
+    "leaked",
+    "forecast_raw",
+    "actual_raw",
+    "previous_raw",
+    "revision_raw",
+    "forecast",
+    "actual",
+    "previous",
+    "revision",
+    "actualBetterWorse",
+    "revisionBetterWorse",
+    "ebaseId",
+    "country",
+    "hasDataValues",
 ]
 # ==========================
 
@@ -45,9 +59,13 @@ PHASE2_COLUMNS: list[str] = [
 # magnitude suffix or percent. Pipe-separated bond auction values ('1.34|2.6'),
 # angle-bracket sub-threshold values ('<0.10%'), and any other format that
 # contains characters outside this set produce no match -> NaN.
-_NUMERIC_RE = re.compile(r'^([+-]?\d*\.?\d+)([KMBTkmbt%]?)$')
+_NUMERIC_RE = re.compile(r"^([+-]?\d*\.?\d+)([KMBTkmbt%]?)$")
 _SUFFIX_MAP: dict[str, float] = {
-    'K': 1e3, 'M': 1e6, 'B': 1e9, 'T': 1e12, '%': 1e-2,
+    "K": 1e3,
+    "M": 1e6,
+    "B": 1e9,
+    "T": 1e12,
+    "%": 1e-2,
 }
 
 
@@ -55,11 +73,12 @@ _SUFFIX_MAP: dict[str, float] = {
 # PARSE: JSON -> CSV
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def load_days_files(in_dir: str):
     """Yield (path, days_list) for each days_*.json file."""
     paths = sorted(glob.glob(os.path.join(in_dir, "days_*.json")))
     for p in paths:
-        with open(p, "r", encoding="utf-8") as f:
+        with open(p, encoding="utf-8") as f:
             try:
                 days = json.load(f)
                 if isinstance(days, list):
@@ -92,7 +111,7 @@ def to_iso(dt_epoch: int | float | None):
         ts = float(dt_epoch)
         if ts > 10_000_000_000:  # milliseconds -> seconds
             ts = ts / 1000.0
-        dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+        dt = datetime.fromtimestamp(ts, tz=UTC)
         return dt.date().isoformat(), dt.strftime("%H:%M:%S")
     except Exception:
         return "", ""
@@ -109,11 +128,11 @@ def _parse_value(s: str) -> float:
     NEVER raises; any unparseable or hostile input -> float('nan') (T-02-01).
     """
     if not s or not s.strip():
-        return float('nan')
+        return float("nan")
     s = s.strip()
     m = _NUMERIC_RE.match(s)
     if not m:
-        return float('nan')
+        return float("nan")
     num = float(m.group(1))
     suffix = m.group(2).upper()
     if suffix:
@@ -181,7 +200,11 @@ def _deduplicate_rows(rows: list[dict]) -> list[dict]:
     """
     dedup = {}
     for r in rows:
-        key = (r["id"], r["date"], r["time_utc"]) if r["id"] else (r["date"], r["time_utc"], r["currency"], r["title"])
+        key = (
+            (r["id"], r["date"], r["time_utc"])
+            if r["id"]
+            else (r["date"], r["time_utc"], r["currency"], r["title"])
+        )
         dedup[key] = r
     result = list(dedup.values())
     result.sort(key=lambda x: (x["date"], x["time_utc"], x["title"]))
@@ -224,6 +247,7 @@ def parse_json_to_csv(
 # SANITIZE: Remove unwanted rows from CSV
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def should_keep_row(row: dict) -> bool:
     """Return True if the row should be kept (no 'speaks' in title)."""
     title = (row.get("title") or "").lower()
@@ -235,7 +259,7 @@ def sanitize_csv(in_csv: str = PARSED_CSV, out_csv: str = CLEAN_CSV) -> str:
     if not os.path.isfile(in_csv):
         raise FileNotFoundError(f"Input CSV not found: {in_csv}")
 
-    with open(in_csv, "r", encoding="utf-8", newline="") as f_in:
+    with open(in_csv, encoding="utf-8", newline="") as f_in:
         reader = csv.DictReader(f_in)
         rows = [r for r in reader if should_keep_row(r)]
         fieldnames = reader.fieldnames
@@ -252,6 +276,7 @@ def sanitize_csv(in_csv: str = PARSED_CSV, out_csv: str = CLEAN_CSV) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 # PARQUET: Convert CSV to Parquet
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def csv_to_parquet(csv_path: str, parquet_path: str = None) -> str:
     """Convert CSV to Parquet, combining date+time into datetime_utc column."""
@@ -293,6 +318,7 @@ def write_parquet(df: pd.DataFrame, parquet_path: str) -> str:
 # MAIN: Run full pipeline or individual steps
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def run_pipeline(
     out_parquet: str = OUT_PARQUET,
     *,
@@ -300,7 +326,10 @@ def run_pipeline(
     keep_currencies: set = KEEP_CURRENCIES,
     keep_impacts: set = KEEP_IMPACTS,
 ) -> None:
-    """Run full pipeline in memory: JSON -> filtered -> sanitized -> Parquet (no intermediate CSVs)."""
+    """Run full pipeline in memory: JSON -> filtered -> sanitized -> Parquet.
+
+    No intermediate CSVs are written.
+    """
     # Parse JSON files
     rows = []
     for path, days in load_days_files(in_dir):
@@ -380,4 +409,3 @@ Without --step, runs full pipeline directly to Parquet (no intermediate CSVs).
 
 if __name__ == "__main__":
     main()
-

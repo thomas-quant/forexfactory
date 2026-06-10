@@ -4,6 +4,7 @@ Tests for src/forexfactory/__init__.py public surface:
   - __all__ lists exact public surface
   - get() and populate() carry complete type annotations
 """
+
 import inspect
 from pathlib import Path
 
@@ -29,6 +30,7 @@ def test_version_uses_importlib_metadata():
 def test_version_is_1_1_0():
     """Installed package version must be 1.1.0 (reflects pyproject.toml bump)."""
     import forexfactory
+
     assert forexfactory.__version__ == "1.1.0", (
         f"Expected '1.1.0', got '{forexfactory.__version__}'"
     )
@@ -37,6 +39,7 @@ def test_version_is_1_1_0():
 def test_all_lists_exact_public_surface():
     """__all__ must be exactly ['get', 'populate', '__version__']."""
     import forexfactory
+
     assert forexfactory.__all__ == ["get", "populate", "__version__"], (
         f"__all__ mismatch: {forexfactory.__all__}"
     )
@@ -45,6 +48,7 @@ def test_all_lists_exact_public_surface():
 def test_get_parameters_are_annotated():
     """get() must have complete parameter annotations using str|None style."""
     import forexfactory
+
     sig = inspect.signature(forexfactory.get)
     params = sig.parameters
 
@@ -72,6 +76,7 @@ def test_get_parameters_are_annotated():
 def test_populate_parameters_are_annotated():
     """populate() must have complete parameter annotations using str|None style."""
     import forexfactory
+
     sig = inspect.signature(forexfactory.populate)
     params = sig.parameters
 
@@ -96,14 +101,12 @@ def test_populate_parameters_are_annotated():
 def test_populate_returns_dict_of_str_int():
     """populate() return annotation must be dict[str, int]."""
     import forexfactory
+
     sig = inspect.signature(forexfactory.populate)
     # dict[str, int] — check it's not bare dict
     ret = sig.return_annotation
-    assert ret != dict, (
-        "populate() return annotation must be dict[str, int], not bare dict"
-    )
+    assert ret is not dict, "populate() return annotation must be dict[str, int], not bare dict"
     # Verify it is a generic alias for dict[str, int]
-    import types
     assert hasattr(ret, "__origin__") or isinstance(ret, type), (
         f"populate() return annotation '{ret}' should be dict[str, int]"
     )
@@ -114,9 +117,7 @@ def test_noqa_plc0415_tags_preserved():
     init_path = Path(__file__).resolve().parents[1] / "src" / "forexfactory" / "__init__.py"
     source = init_path.read_text(encoding="utf-8")
     count = source.count("noqa: PLC0415")
-    assert count == 2, (
-        f"Expected 2 '# noqa: PLC0415' tags in __init__.py, found {count}"
-    )
+    assert count == 2, f"Expected 2 '# noqa: PLC0415' tags in __init__.py, found {count}"
 
 
 def test_pragma_no_cover_on_packagenotfound_branch():

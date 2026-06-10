@@ -13,8 +13,8 @@ Usage:
     # result == {"fetched": N, "skipped": N, "failed": N}
 """
 
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from importlib.metadata import version, PackageNotFoundError
 
 try:
     __version__: str = version("forexfactory")
@@ -45,6 +45,7 @@ def get(
     _query.py exists (it is implemented in plan 04).
     """
     from . import _query  # noqa: PLC0415 — intentional lazy import
+
     return _query.run_query(
         currencies=currencies,
         impacts=impacts,
@@ -87,6 +88,7 @@ def populate(
                     cache-only — no automatic network activity.
     """
     from . import _populate  # noqa: PLC0415 — intentional lazy import
+
     kwargs: dict[str, object] = dict(
         currencies=currencies,
         impacts=impacts,
