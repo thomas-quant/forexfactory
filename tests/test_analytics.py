@@ -12,7 +12,6 @@ import unittest
 
 import pandas as pd
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -113,7 +112,9 @@ class SurpriseNaNTests(unittest.TestCase):
 
     def test_empty_dataframe_does_not_raise(self):
         """Empty DataFrame must not raise and must return an empty Series (D-03)."""
-        df = pd.DataFrame({"actual": pd.Series([], dtype=float), "forecast": pd.Series([], dtype=float)})
+        df = pd.DataFrame(
+            {"actual": pd.Series([], dtype=float), "forecast": pd.Series([], dtype=float)}
+        )
         from forexfactory._analytics import surprise
 
         result = surprise(df)
