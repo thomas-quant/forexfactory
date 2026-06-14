@@ -88,6 +88,10 @@ def run_refresh(
     if retry_delay is None:
         retry_delay = _scrape.RETRY_DELAY
 
+    # Normalize case before the scope union / fetch (currencies UPPER, impacts lower)
+    # so `--currency usd` / `--impact HIGH` match stored data and manifest scope.
+    currencies, impacts = _cache.normalize_scope(currencies, impacts)
+
     # Resolve cache dir and ensure layout exists (CACHE-01)
     resolved_cache = _cache.resolve_cache_dir(cache_dir)
     _cache.ensure_dirs(resolved_cache)

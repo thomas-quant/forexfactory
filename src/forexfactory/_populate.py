@@ -166,6 +166,10 @@ def run_populate(
     if impacts is None:
         impacts = DEFAULT_IMPACTS
 
+    # Normalize case so `--currency usd` / `--impact HIGH` match stored data and
+    # manifest scope checks stay consistent (currencies UPPER, impacts lower).
+    currencies, impacts = _cache.normalize_scope(currencies, impacts)
+
     # Resolve cache dir and ensure layout exists
     resolved_cache = _cache.resolve_cache_dir(cache_dir)
     _cache.ensure_dirs(resolved_cache)
@@ -240,6 +244,34 @@ def run_populate(
     populated_count = 0
     skipped_count = 0
     empty_count = 0
+
+    # No months to ingest — emit an actionable warning instead of a silent
+    # all-zero result. The usual cause is running `populate` from a directory
+    # whose (relative, default "out") raw dir holds no days_*.json files — e.g.
+    # another project. The network path to acquire data is `forexfactory refresh`.
+    if total == 0:
+        raw_abs = os.path.abspath(raw_dir)
+        if not os.path.isdir(raw_dir):
+            logger.warning(
+                "[populate] raw dir %s does not exist — nothing to ingest. "
+                "To fetch over the network instead, run: forexfactory refresh",
+                raw_abs,
+            )
+        elif not raw_paths:
+            logger.warning(
+                "[populate] no days_*.json files found in %s — nothing to ingest. "
+                "To fetch over the network instead, run: forexfactory refresh",
+                raw_abs,
+            )
+        else:
+            logger.warning(
+                "[populate] %d raw file(s) in %s but none fall in range %s..%s — "
+                "nothing to ingest.",
+                len(raw_paths),
+                raw_abs,
+                start or "earliest",
+                end or "latest",
+            )
 
     # Read manifest once outside the loop (updated after each write)
     manifest = _cache.read_manifest(resolved_cache)

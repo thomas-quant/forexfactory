@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-06-14
+
+### Fixed
+
+- **`populate` no longer reports a silent `populated=0 skipped=0 empty=0` success** when no raw JSON is found. It now logs a clear warning naming the resolved raw directory and pointing to `forexfactory refresh` (distinguishing a missing dir, an empty dir, and files narrowed out by `--start`/`--end`). The usual cause is running `populate` from a directory whose relative default raw dir (`out`) has no `days_*.json` files.
+- **Duplicate `[populate] done …` / `[refresh] done …` log line** — the summary was emitted by both the service layer and the CLI; the redundant CLI line was removed.
+
+### Changed
+
+- **`--currency` and `--impact` accept multiple values per flag** (e.g. `--impact high medium holiday`) across `populate`, `refresh`, and `query`. Repeated flags still accumulate (`--impact high --impact medium`).
+- **Scope filters are now case-insensitive** — currencies are normalized to uppercase and impacts to lowercase at the service boundary, so `--currency usd` / `--impact HIGH` match stored data and the manifest scope instead of silently matching nothing.
+
 ## [1.1.0] - 2026-06-10
 
 ### Added

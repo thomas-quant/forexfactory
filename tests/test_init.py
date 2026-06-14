@@ -27,12 +27,12 @@ def test_version_uses_importlib_metadata():
     )
 
 
-def test_version_is_1_1_0():
-    """Installed package version must be 1.1.0 (reflects pyproject.toml bump)."""
+def test_version_is_1_1_1():
+    """Installed package version must be 1.1.1 (reflects pyproject.toml bump)."""
     import forexfactory
 
-    assert forexfactory.__version__ == "1.1.0", (
-        f"Expected '1.1.0', got '{forexfactory.__version__}'"
+    assert forexfactory.__version__ == "1.1.1", (
+        f"Expected '1.1.1', got '{forexfactory.__version__}'"
     )
 
 

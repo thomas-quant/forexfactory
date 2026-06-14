@@ -294,6 +294,80 @@ class CliRoutingTests(unittest.TestCase):
 
         self.assertEqual(captured["impacts"], ["high", "holiday"])
 
+    def test_single_flag_multi_value_impacts(self):
+        """`--impact high medium holiday` (one flag) yields all three impacts."""
+        captured = {}
+
+        def fake_run_populate(
+            *,
+            currencies,
+            impacts,
+            start,
+            end,
+            raw_dir,
+            cache_dir,
+            force,
+            force_refresh=False,
+            auto_fetch=True,
+        ):
+            captured["impacts"] = impacts
+            captured["currencies"] = currencies
+            return {"populated": 0, "skipped": 0, "empty": 0}
+
+        with patch.object(cli._populate, "run_populate", side_effect=fake_run_populate):
+            cli.main(
+                [
+                    "populate",
+                    "--currency",
+                    "USD",
+                    "EUR",
+                    "--impact",
+                    "high",
+                    "medium",
+                    "holiday",
+                    "--raw-dir",
+                    "out",
+                ]
+            )
+
+        self.assertEqual(captured["impacts"], ["high", "medium", "holiday"])
+        self.assertEqual(captured["currencies"], ["USD", "EUR"])
+
+    def test_mixed_single_and_repeated_flags_accumulate(self):
+        """`--impact high medium --impact holiday` accumulates into one list (extend)."""
+        captured = {}
+
+        def fake_run_populate(
+            *,
+            currencies,
+            impacts,
+            start,
+            end,
+            raw_dir,
+            cache_dir,
+            force,
+            force_refresh=False,
+            auto_fetch=True,
+        ):
+            captured["impacts"] = impacts
+            return {"populated": 0, "skipped": 0, "empty": 0}
+
+        with patch.object(cli._populate, "run_populate", side_effect=fake_run_populate):
+            cli.main(
+                [
+                    "populate",
+                    "--impact",
+                    "high",
+                    "medium",
+                    "--impact",
+                    "holiday",
+                    "--raw-dir",
+                    "out",
+                ]
+            )
+
+        self.assertEqual(captured["impacts"], ["high", "medium", "holiday"])
+
 
 class CliValidateMonthTests(unittest.TestCase):
     """WR-05: _validate_month must range-check the month integer to [1, 12]."""

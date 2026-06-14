@@ -173,5 +173,30 @@ class CacheTests(unittest.TestCase):
         self.assertIn("2024-02", result["months"])
 
 
+class NormalizeScopeTests(unittest.TestCase):
+    """normalize_scope canonicalizes case: currencies UPPER, impacts lower."""
+
+    def test_lowercase_currency_uppercased(self):
+        currencies, _impacts = _cache.normalize_scope(["usd", "eur"], ["high"])
+        self.assertEqual(currencies, ["USD", "EUR"])
+
+    def test_uppercase_impact_lowercased(self):
+        _currencies, impacts = _cache.normalize_scope(["USD"], ["HIGH", "Holiday"])
+        self.assertEqual(impacts, ["high", "holiday"])
+
+    def test_already_canonical_unchanged(self):
+        currencies, impacts = _cache.normalize_scope(["USD"], ["high", "holiday"])
+        self.assertEqual(currencies, ["USD"])
+        self.assertEqual(impacts, ["high", "holiday"])
+
+    def test_order_preserved(self):
+        currencies, impacts = _cache.normalize_scope(["jpy", "usd"], ["medium", "high"])
+        self.assertEqual(currencies, ["JPY", "USD"])
+        self.assertEqual(impacts, ["medium", "high"])
+
+    def test_empty_lists(self):
+        self.assertEqual(_cache.normalize_scope([], []), ([], []))
+
+
 if __name__ == "__main__":
     unittest.main()

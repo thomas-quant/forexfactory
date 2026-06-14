@@ -172,3 +172,16 @@ def _scope_covers(scope: dict[str, Any], currencies: list[str], impacts: list[st
     return all(c in cached_currencies for c in currencies) and all(
         i in cached_impacts for i in impacts
     )
+
+
+def normalize_scope(
+    currencies: list[str], impacts: list[str]
+) -> tuple[list[str], list[str]]:
+    """Normalize scope tokens to canonical case: currencies UPPER, impacts lower.
+
+    Forex Factory stores currencies uppercase (``USD``) and impacts lowercase
+    (``high``/``holiday`` — see _pipeline.norm_impact). Normalizing user input at
+    the service boundary lets callers pass ``--currency usd`` / ``--impact HIGH``
+    without silently matching nothing, and keeps manifest scope checks consistent.
+    """
+    return [c.upper() for c in currencies], [i.lower() for i in impacts]

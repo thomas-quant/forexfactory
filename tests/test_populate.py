@@ -1174,5 +1174,127 @@ class PopulateAutoFetchTests(unittest.TestCase):
         self.assertIn("auto_fetch", params, "run_populate must have an 'auto_fetch' kwarg")
 
 
+class PopulateCaseNormalizationTests(unittest.TestCase):
+    """Lowercase currency / uppercase impact input must match stored data."""
+
+    def _write_raw(self, raw_dir: Path, year: int, month: int, events: list) -> Path:
+        path = raw_dir / f"days_{year:04d}_{month:02d}.json"
+        path.write_text(json.dumps([{"events": events}]), encoding="utf-8")
+        return path
+
+    def _usd_high_event(self, dateline: int = 1772368200) -> dict:
+        return {
+            "currency": "USD",
+            "impactName": "High Impact Expected",
+            "name": "CPI y/y",
+            "dateline": dateline,
+            "id": "cpi-1",
+            "leaked": False,
+        }
+
+    def test_lowercase_currency_and_upper_impact_populate_rows(self):
+        """`currencies=['usd'], impacts=['HIGH']` still ingests the USD/high event."""
+        import pandas as pd
+
+        from forexfactory import _cache, _populate
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            raw_dir = tmp_path / "raw"
+            raw_dir.mkdir()
+            cache_dir = tmp_path / "cache"
+            cache_dir.mkdir()
+
+            self._write_raw(raw_dir, 2026, 3, [self._usd_high_event()])
+
+            result = _populate.run_populate(
+                cache_dir=cache_dir,
+                raw_dir=str(raw_dir),
+                currencies=["usd"],
+                impacts=["HIGH"],
+                auto_fetch=False,
+            )
+
+            self.assertEqual(result["populated"], 1)
+            df = pd.read_parquet(cache_dir / "2026-03.parquet")
+            self.assertGreater(len(df), 0, "lowercase currency input must still match USD rows")
+
+            # Manifest scope is recorded in canonical case.
+            manifest = _cache.read_manifest(cache_dir)
+            self.assertEqual(manifest["scope"]["currencies"], ["USD"])
+            self.assertEqual(manifest["scope"]["impacts"], ["high"])
+
+
+class PopulateNoRawWarningTests(unittest.TestCase):
+    """total==0 must surface an actionable warning, not a silent all-zero result."""
+
+    def test_missing_raw_dir_warns_and_points_to_refresh(self):
+        """A non-existent raw dir logs a warning naming the dir and `refresh`."""
+        from forexfactory import _populate
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            cache_dir.mkdir()
+            missing = Path(tmpdir) / "does-not-exist"
+
+            with self.assertLogs("forexfactory._populate", level="WARNING") as cm:
+                result = _populate.run_populate(
+                    cache_dir=cache_dir,
+                    raw_dir=str(missing),
+                    auto_fetch=False,
+                )
+
+            self.assertEqual(result, {"populated": 0, "skipped": 0, "empty": 0})
+            joined = "\n".join(cm.output)
+            self.assertIn("does not exist", joined)
+            self.assertIn("forexfactory refresh", joined)
+
+    def test_empty_raw_dir_warns_no_files_found(self):
+        """An existing-but-empty raw dir warns that no days_*.json were found."""
+        from forexfactory import _populate
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            cache_dir.mkdir()
+            raw_dir = Path(tmpdir) / "out"
+            raw_dir.mkdir()
+
+            with self.assertLogs("forexfactory._populate", level="WARNING") as cm:
+                _populate.run_populate(
+                    cache_dir=cache_dir,
+                    raw_dir=str(raw_dir),
+                    auto_fetch=False,
+                )
+
+            joined = "\n".join(cm.output)
+            self.assertIn("no days_*.json files found", joined)
+            self.assertIn("forexfactory refresh", joined)
+
+    def test_files_present_but_out_of_range_warns(self):
+        """Raw files present but narrowed out by start/end warns about the range."""
+        from forexfactory import _populate
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            cache_dir.mkdir()
+            raw_dir = Path(tmpdir) / "out"
+            raw_dir.mkdir()
+            (raw_dir / "days_2026_03.json").write_text(
+                json.dumps([{"events": []}]), encoding="utf-8"
+            )
+
+            with self.assertLogs("forexfactory._populate", level="WARNING") as cm:
+                _populate.run_populate(
+                    cache_dir=cache_dir,
+                    raw_dir=str(raw_dir),
+                    start="2030-01",
+                    end="2030-12",
+                    auto_fetch=False,
+                )
+
+            joined = "\n".join(cm.output)
+            self.assertIn("none fall in range", joined)
+
+
 if __name__ == "__main__":
     unittest.main()

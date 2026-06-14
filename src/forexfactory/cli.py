@@ -112,16 +112,21 @@ def main(argv: list[str] | None = None) -> int:
     pop.add_argument(
         "--currency",
         dest="currency",
-        action="append",
+        action="extend",
+        nargs="+",
         metavar="CURRENCY",
-        help="Currency to include (repeatable; default: USD) [D-12]",
+        help="Currency to include (repeatable or space-separated; default: USD) [D-12]",
     )
     pop.add_argument(
         "--impact",
         dest="impact",
-        action="append",
+        action="extend",
+        nargs="+",
         metavar="IMPACT",
-        help="Impact level to include (repeatable; default: high holiday) [D-12]",
+        help=(
+            "Impact level to include (repeatable or space-separated; "
+            "default: high holiday) [D-12]"
+        ),
     )
     pop.add_argument(
         "--start",
@@ -181,16 +186,18 @@ def main(argv: list[str] | None = None) -> int:
     rfr.add_argument(
         "--currency",
         dest="currency",
-        action="append",
+        action="extend",
+        nargs="+",
         metavar="CURRENCY",
-        help="Currency to fetch (repeatable; default: USD) [D-12]",
+        help="Currency to fetch (repeatable or space-separated; default: USD) [D-12]",
     )
     rfr.add_argument(
         "--impact",
         dest="impact",
-        action="append",
+        action="extend",
+        nargs="+",
         metavar="IMPACT",
-        help="Impact level to fetch (repeatable; default: high holiday) [D-12]",
+        help="Impact level to fetch (repeatable or space-separated; default: high holiday) [D-12]",
     )
     rfr.add_argument(
         "--start",
@@ -248,16 +255,18 @@ def main(argv: list[str] | None = None) -> int:
     qry.add_argument(
         "--currency",
         dest="currency",
-        action="append",
+        action="extend",
+        nargs="+",
         metavar="CURRENCY",
-        help="Currency to query (repeatable; default: USD) [D-12]",
+        help="Currency to query (repeatable or space-separated; default: USD) [D-12]",
     )
     qry.add_argument(
         "--impact",
         dest="impact",
-        action="append",
+        action="extend",
+        nargs="+",
         metavar="IMPACT",
-        help="Impact level to query (repeatable; default: high holiday) [D-12]",
+        help="Impact level to query (repeatable or space-separated; default: high holiday) [D-12]",
     )
     qry.add_argument(
         "--start",
@@ -338,12 +347,7 @@ def main(argv: list[str] | None = None) -> int:
             retry_delay=args.retry_delay,
             force_refresh=args.force_refresh,
         )
-        logger.info(
-            "[refresh] done — fetched=%d skipped=%d failed=%d",
-            result["fetched"],
-            result["skipped"],
-            result["failed"],
-        )
+        # run_refresh already logs the "[refresh] done — ..." summary; no re-log here.
         return 0
 
     if args.command == "populate":
@@ -360,20 +364,15 @@ def main(argv: list[str] | None = None) -> int:
             auto_fetch=not args.no_auto_fetch,  # D-09: --no-auto-fetch → strict cache-only
         )
         if args.force_refresh:
-            # D-04: force-refresh returns fetched/skipped/failed
+            # D-04: force-refresh delegates to run_refresh (which logs "[refresh] done");
+            # this distinct line reports the result under the populate command's own label.
             logger.info(
                 "[populate] force-refresh done — fetched=%d skipped=%d failed=%d",
                 result["fetched"],
                 result["skipped"],
                 result["failed"],
             )
-        else:
-            logger.info(
-                "[populate] done — populated=%d skipped=%d empty=%d",
-                result["populated"],
-                result["skipped"],
-                result["empty"],
-            )
+        # Non-force path: run_populate already logs the "[populate] done — ..." summary.
         return 0
 
     if args.command == "query":

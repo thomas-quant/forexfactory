@@ -143,6 +143,10 @@ def run_query(
     if impacts is None:
         impacts = list(DEFAULT_IMPACTS)
 
+    # Normalize case so `--currency usd` / `--impact HIGH` match stored data,
+    # the manifest scope check, and the deterministic result filename.
+    currencies, impacts = _cache.normalize_scope(currencies, impacts)
+
     cache_dir = _cache.resolve_cache_dir(cache_dir)
     _cache.ensure_dirs(cache_dir)
 
